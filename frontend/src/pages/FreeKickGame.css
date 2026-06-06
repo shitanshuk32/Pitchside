@@ -1,0 +1,247 @@
+.ffk {
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 16px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  box-shadow:
+    0 8px 30px rgba(131, 58, 180, 0.12),
+    0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.ffk-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.ffk-energy {
+  display: flex;
+  gap: 8px;
+}
+
+.ffk-pip {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  font-size: 28px;
+  line-height: 1;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--pip, #ccc);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  transition: all 0.25s ease;
+}
+
+.ffk-pip.spent {
+  filter: grayscale(1);
+  opacity: 0.4;
+  transform: scale(0.85);
+}
+
+.ffk-pip.current {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--pip) 30%, transparent);
+  animation: pipPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pipPulse {
+  50% {
+    transform: scale(1.12);
+  }
+}
+
+.ffk-scores {
+  display: flex;
+  gap: 14px;
+  font-size: 0.78rem;
+  color: #777;
+}
+
+.ffk-scores strong {
+  color: #4a154b;
+  font-size: 0.95rem;
+}
+
+.ffk-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 100 / 130;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.ffk-pitch {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: grab;
+}
+
+.ffk-pitch:active {
+  cursor: grabbing;
+}
+
+.ffk-banner {
+  position: absolute;
+  top: 38%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 10px 22px;
+  border-radius: 999px;
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #fff;
+  white-space: nowrap;
+  animation: bannerPop 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  pointer-events: none;
+}
+
+.ffk-banner--goal {
+  background: linear-gradient(135deg, #16a085, #2ecc71);
+  box-shadow: 0 10px 24px rgba(46, 204, 113, 0.4);
+}
+
+.ffk-banner--saved,
+.ffk-banner--post {
+  background: linear-gradient(135deg, #e67e22, #f39c12);
+  box-shadow: 0 10px 24px rgba(243, 156, 18, 0.35);
+}
+
+.ffk-banner--miss {
+  background: linear-gradient(135deg, #c0392b, #e74c3c);
+  box-shadow: 0 10px 24px rgba(231, 76, 60, 0.35);
+}
+
+.ffk-banner--wide {
+  background: linear-gradient(135deg, #5d6d7e, #85929e);
+  box-shadow: 0 10px 24px rgba(133, 146, 158, 0.4);
+}
+
+.ffk-banner--nogoal {
+  background: linear-gradient(135deg, #b9770e, #e2a03f);
+  box-shadow: 0 10px 24px rgba(226, 160, 63, 0.4);
+  font-size: 1.05rem;
+}
+
+@keyframes bannerPop {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.5);
+  }
+  60% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.12);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+.ffk-lock {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+  padding: 20px;
+  color: #fff;
+  background: rgba(20, 20, 28, 0.62);
+  backdrop-filter: blur(3px);
+}
+
+.ffk-lock-title {
+  font-size: 1.2rem;
+  font-weight: 800;
+}
+
+.ffk-lock-timer {
+  font-size: 1.6rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  background: linear-gradient(135deg, #fcb045, #fd1d1d);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.ffk-lock-note {
+  font-size: 0.82rem;
+  opacity: 0.85;
+}
+
+.ffk-foot {
+  margin-top: 12px;
+  font-size: 0.84rem;
+  color: #555;
+  text-align: center;
+  line-height: 1.5;
+}
+
+.ffk-compete {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 16px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.ffk-compete-status {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #2a8a4e;
+}
+
+.ffk-compete-cta {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #833ab4;
+  text-decoration: none;
+}
+
+.ffk-compete-cta:hover {
+  text-decoration: underline;
+}
+
+.ffk-compete-link {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #6b7280;
+  text-decoration: none;
+}
+
+.ffk-compete-link:hover {
+  color: #833ab4;
+}
+
+.ffk-tribute {
+  margin-top: 8px;
+  font-size: 0.76rem;
+  font-style: italic;
+  text-align: center;
+  color: #999;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ffk-pip.current,
+  .ffk-banner {
+    animation: none;
+  }
+}

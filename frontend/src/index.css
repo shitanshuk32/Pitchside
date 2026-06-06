@@ -1,0 +1,90 @@
+@import "tailwindcss";
+
+/* ---- Pitchside brand theme tokens (usable as Tailwind utilities) ---- */
+@theme {
+  --font-sans: "DM Sans", system-ui, sans-serif;
+
+  --color-brand-purple: #833ab4;
+  --color-brand-red: #fd1d1d;
+  --color-brand-gold: #fcb045;
+  --color-brand-teal: #16a085;
+  --color-brand-teal-ink: #16695b;
+  --color-brand-plum: #4a154b;
+  --color-brand-cream: #faf7f2;
+  --color-ink: #2c2c34;
+
+  /* Reusable animations (available as animate-* utilities) */
+  --animate-float: floatY 9s ease-in-out infinite;
+  --animate-page-in: pageIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes floatY {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-8deg);
+  }
+  50% {
+    transform: translateY(-14px) rotate(6deg);
+  }
+}
+
+@keyframes pageIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Shared page gradient backdrop (used across the inner pages) */
+@utility page-bg {
+  background:
+    radial-gradient(circle at 15% 12%, rgba(22, 160, 133, 0.1), transparent 42%),
+    radial-gradient(circle at 85% 80%, rgba(131, 58, 180, 0.1), transparent 45%),
+    radial-gradient(circle at 50% 100%, rgba(252, 176, 69, 0.12), transparent 50%),
+    var(--color-brand-cream);
+}
+
+/* Brand gradient text (titles) */
+@utility text-brand-gradient {
+  background: linear-gradient(135deg, #833ab4 0%, #fd1d1d 50%, #fcb045 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-float,
+  .animate-page-in {
+    animation: none !important;
+  }
+}
+
+/* ---- Global base ----
+   Kept inside @layer base so Tailwind utility classes (px-*, mx-auto, mb-*,
+   etc.) still win. Unlayered rules would override every utility because, in
+   CSS cascade layers, unlayered styles beat layered ones regardless of
+   specificity. */
+@layer base {
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background: var(--color-brand-cream);
+    color: #111;
+  }
+
+  button {
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+  }
+}

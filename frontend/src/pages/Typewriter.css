@@ -1,0 +1,111 @@
+.typewriter {
+  position: relative;
+  padding: 2px;
+  border-radius: 22px;
+  background: linear-gradient(135deg, rgba(131, 58, 180, 0.4), rgba(252, 176, 69, 0.4));
+}
+
+.typewriter-inner {
+  position: relative;
+  padding: 26px 30px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(12px);
+  box-shadow:
+    0 4px 24px rgba(131, 58, 180, 0.1),
+    0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.typewriter-dots {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.typewriter-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ddd;
+  transition: all 0.35s ease;
+}
+
+.typewriter-dot.active {
+  width: 24px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #833ab4, #fd1d1d);
+  box-shadow: 0 0 12px rgba(253, 29, 29, 0.35);
+}
+
+.typewriter-dot.done {
+  background: linear-gradient(90deg, #833ab4, #fcb045);
+}
+
+/* Stage reserves height for the longest line to stop layout jumps */
+.typewriter-stage {
+  position: relative;
+}
+
+.typewriter-sizer {
+  display: block;
+  visibility: hidden;
+  font-size: 1.2rem;
+  font-weight: 500;
+  line-height: 1.7;
+}
+
+.typewriter-line {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 500;
+  line-height: 1.7;
+}
+
+.typewriter-text {
+  background: linear-gradient(90deg, #4a154b, #833ab4, #fd1d1d, #fcb045);
+  background-size: 300% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: textGradient 5s ease infinite;
+}
+
+.cursor {
+  display: inline-block;
+  width: 3px;
+  height: 1em;
+  margin-left: 3px;
+  vertical-align: -0.12em;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #833ab4, #fd1d1d);
+  animation: blink 0.9s step-end infinite;
+}
+
+.cursor-delete {
+  background: linear-gradient(180deg, #fd1d1d, #fcb045);
+  animation: blink 0.5s step-end infinite;
+}
+
+@keyframes textGradient {
+  0%,
+  100% {
+    background-position: 0% center;
+  }
+  50% {
+    background-position: 100% center;
+  }
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .typewriter-text {
+    animation: none;
+  }
+}

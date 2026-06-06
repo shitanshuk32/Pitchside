@@ -1,0 +1,702 @@
+.home {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 36px 24px 180px;
+  overflow: hidden;
+  background:
+    radial-gradient(
+      circle at 18% 20%,
+      rgba(26, 188, 156, 0.1),
+      transparent 42%
+    ),
+    radial-gradient(
+      circle at 82% 72%,
+      rgba(131, 58, 180, 0.1),
+      transparent 45%
+    ),
+    radial-gradient(
+      circle at 50% 100%,
+      rgba(252, 176, 69, 0.12),
+      transparent 50%
+    ),
+    #faf7f2;
+}
+
+/* Keep Clerk's user avatar vertically centered in the header row */
+.home-header :where(.cl-userButton-root, .cl-userButtonBox) {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Floating gradient orbs */
+.home-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(55px);
+  opacity: 0.4;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.home-orb--1 {
+  width: 240px;
+  height: 240px;
+  top: -50px;
+  left: -40px;
+  background: radial-gradient(circle, #16a085, transparent 70%);
+}
+
+.home-orb--2 {
+  width: 300px;
+  height: 300px;
+  bottom: -90px;
+  right: -60px;
+  background: radial-gradient(circle, #833ab4, transparent 70%);
+}
+
+/* Hand-drawn doodles */
+.home-doodles {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  color: #2c2c34;
+}
+
+.doodle {
+  position: absolute;
+  opacity: 0.12;
+}
+
+.doodle--ball-1 {
+  width: 70px;
+  top: 12%;
+  left: 8%;
+  transform: rotate(-12deg);
+  animation: doodleFloat 9s ease-in-out infinite;
+}
+
+.doodle--ball-2 {
+  width: 46px;
+  bottom: 14%;
+  right: 12%;
+  transform: rotate(10deg);
+  animation: doodleFloat 7s ease-in-out infinite 0.8s;
+}
+
+.doodle--trophy {
+  width: 64px;
+  top: 16%;
+  right: 9%;
+  color: #fcb045;
+  opacity: 0.2;
+  transform: rotate(8deg);
+  animation: doodleFloat 11s ease-in-out infinite 0.4s;
+}
+
+.doodle--star-1 {
+  width: 34px;
+  top: 40%;
+  left: 6%;
+  color: #fd1d1d;
+  opacity: 0.16;
+  animation: doodleSpin 16s linear infinite;
+}
+
+.doodle--star-2 {
+  width: 26px;
+  top: 70%;
+  right: 18%;
+  color: #833ab4;
+  opacity: 0.16;
+  animation: doodleSpin 20s linear infinite reverse;
+}
+
+.doodle--whistle {
+  width: 56px;
+  bottom: 22%;
+  left: 14%;
+  color: #16a085;
+  opacity: 0.16;
+  transform: rotate(-8deg);
+  animation: doodleFloat 8s ease-in-out infinite 0.6s;
+}
+
+@keyframes doodleFloat {
+  0%,
+  100% {
+    transform: translateY(0) rotate(var(--r, 0deg));
+  }
+  50% {
+    transform: translateY(-16px) rotate(var(--r, 0deg));
+  }
+}
+
+@keyframes doodleSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Stickman kick scene */
+.kick-scene {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 12px;
+  z-index: 1;
+  pointer-events: none;
+  display: flex;
+  justify-content: center;
+  opacity: 0.85;
+}
+
+.kick-svg {
+  width: min(420px, 92%);
+  height: auto;
+}
+
+.ks-ground {
+  stroke: rgba(44, 44, 52, 0.35);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-dasharray: 2 8;
+}
+
+.ks-stroke {
+  stroke: #2c2c34;
+  stroke-width: 3;
+  stroke-linecap: round;
+  fill: none;
+}
+
+.ks-frame {
+  stroke: #2c2c34;
+  stroke-width: 4;
+  stroke-linejoin: round;
+  fill: none;
+}
+
+.ks-net {
+  stroke: rgba(44, 44, 52, 0.3);
+  stroke-width: 1.2;
+}
+
+.ks-goal {
+  animation: ksNetShake 0.5s ease 1.55s both;
+  transform-origin: 352px 74px;
+}
+
+.ks-ball-fill {
+  fill: #2c2c34;
+}
+
+/* Stickman runs in, then plants and kicks */
+.ks-stick {
+  animation: ksRunIn 0.6s ease-out both;
+}
+
+.ks-kick-leg {
+  transform-box: fill-box;
+  transform-origin: 0% 0%;
+  animation: ksKick 1.8s ease-out both;
+}
+
+/* Ball waits at the foot, then curls into the top corner */
+.ks-ball {
+  transform: translate(64px, 96px);
+  animation: ksShoot 1.8s cubic-bezier(0.3, 0.05, 0.4, 1) both;
+}
+
+.ks-goal-text {
+  font-family: inherit;
+  font-weight: 800;
+  font-size: 20px;
+  fill: #fd1d1d;
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ksGoalPop 0.8s cubic-bezier(0.16, 1, 0.3, 1) 1.6s both;
+}
+
+@keyframes ksRunIn {
+  from {
+    transform: translateX(-60px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes ksKick {
+  0%,
+  44% {
+    transform: rotate(28deg);
+  }
+  58% {
+    transform: rotate(-62deg);
+  }
+  74%,
+  100% {
+    transform: rotate(-34deg);
+  }
+}
+
+@keyframes ksShoot {
+  0%,
+  48% {
+    transform: translate(64px, 96px) rotate(0deg);
+  }
+  64% {
+    transform: translate(170px, 40px) rotate(260deg);
+  }
+  80% {
+    transform: translate(260px, 30px) rotate(480deg);
+  }
+  100% {
+    transform: translate(338px, 58px) rotate(760deg);
+  }
+}
+
+@keyframes ksNetShake {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.04, 0.96);
+  }
+  70% {
+    transform: scale(0.99, 1.01);
+  }
+}
+
+@keyframes ksGoalPop {
+  0% {
+    opacity: 0;
+    transform: scale(0.4) rotate(-8deg);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.15) rotate(4deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+.home-content {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  max-width: 720px;
+  animation: contentIn 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes contentIn {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Header row: badge (left) + auth control (right) share one line */
+.home-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 26px;
+}
+
+.home-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px 6px 8px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #16695b;
+  background: rgba(22, 160, 133, 0.12);
+  border: 1px solid rgba(22, 160, 133, 0.22);
+}
+
+.home-badge-ball {
+  font-size: 1rem;
+  animation: ballSpin 3s linear infinite;
+}
+
+@keyframes ballSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.home-title {
+  display: block;
+  margin-bottom: 18px;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+
+.home-title-eyebrow {
+  display: block;
+  font-size: clamp(0.95rem, 2vw, 1.15rem);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: #999;
+  margin-bottom: 2px;
+  -webkit-text-fill-color: #999;
+}
+
+.home-title-brand {
+  display: block;
+  font-size: clamp(3.2rem, 9vw, 5rem);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  background: linear-gradient(135deg, #833ab4 0%, #fd1d1d 50%, #fcb045 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: titleShimmer 6s ease infinite;
+}
+
+.home-title-accent {
+  display: block;
+  width: 78px;
+  height: 6px;
+  margin-bottom: 22px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #16a085, #833ab4, #fcb045);
+  transform-origin: left center;
+  animation: accentGrow 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.4s both;
+}
+
+@keyframes accentGrow {
+  from {
+    transform: scaleX(0);
+    opacity: 0;
+  }
+  to {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+}
+
+.home-subtitle {
+  max-width: 40ch;
+  margin-bottom: 30px;
+  font-size: clamp(1.3rem, 3.4vw, 1.7rem);
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  color: #555;
+}
+
+.home-subtitle strong {
+  font-weight: 800;
+  color: #2c2c34;
+  background: linear-gradient(135deg, #833ab4, #fd1d1d 60%, #fcb045);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Live countdown to kickoff */
+.home-countdown {
+  margin: 8px 0 34px;
+  padding: 18px 20px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(131, 58, 180, 0.16);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 14px 34px rgba(76, 21, 75, 0.08);
+  max-width: 420px;
+  animation: contentIn 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
+}
+
+.home-countdown-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #16695b;
+}
+
+.live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #fd1d1d;
+  box-shadow: 0 0 0 0 rgba(253, 29, 29, 0.55);
+  animation: livePulse 1.6s ease-out infinite;
+}
+
+@keyframes livePulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(253, 29, 29, 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 9px rgba(253, 29, 29, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(253, 29, 29, 0);
+  }
+}
+
+.home-countdown-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.cd-unit {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 4px;
+  border-radius: 12px;
+  background: linear-gradient(
+    160deg,
+    rgba(131, 58, 180, 0.08),
+    rgba(252, 176, 69, 0.08)
+  );
+  border: 1px solid rgba(255, 255, 255, 0.6);
+}
+
+.cd-unit strong {
+  font-size: clamp(1.5rem, 5vw, 1.9rem);
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  background: linear-gradient(135deg, #833ab4, #fd1d1d 55%, #fcb045);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.cd-unit span {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #8a8a93;
+}
+
+.home-countdown-live-text {
+  margin: 4px 0 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #4a154b;
+}
+
+.home-fact-label {
+  display: inline-block;
+  margin-bottom: 10px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #16695b;
+}
+
+@keyframes titleShimmer {
+  0%,
+  100% {
+    background-position: 0% center;
+  }
+  50% {
+    background-position: 100% center;
+  }
+}
+
+/* CTA buttons */
+.home-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 28px;
+}
+
+.home-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 13px 26px;
+  border-radius: 999px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease;
+}
+
+.home-btn--primary {
+  color: #fff;
+  background: linear-gradient(135deg, #833ab4, #fd1d1d, #fcb045);
+  background-size: 200% auto;
+  box-shadow: 0 8px 22px rgba(253, 29, 29, 0.3);
+}
+
+.home-btn--primary:hover {
+  transform: translateY(-3px);
+  background-position: right center;
+  box-shadow: 0 12px 28px rgba(253, 29, 29, 0.42);
+}
+
+.home-btn-arrow {
+  transition: transform 0.2s ease;
+}
+
+.home-btn--primary:hover .home-btn-arrow {
+  transform: translateX(4px);
+}
+
+.home-btn--ghost {
+  color: #16695b;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(22, 160, 133, 0.3);
+}
+
+.home-btn--ghost:hover {
+  transform: translateY(-3px);
+  background: #fff;
+  box-shadow: 0 10px 24px rgba(22, 160, 133, 0.18);
+}
+
+/* Stats */
+.home-stats {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px 20px;
+  margin-top: 36px;
+}
+
+.home-stat {
+  display: flex;
+  flex-direction: column;
+}
+
+.home-stat strong {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #4a154b;
+}
+
+.home-stat span {
+  font-size: 0.8rem;
+  color: #888;
+}
+
+.home-stat-divider {
+  width: 1px;
+  height: 32px;
+  background: rgba(131, 58, 180, 0.18);
+}
+
+/* Free-kick mini game */
+.home-game {
+  margin-top: 44px;
+}
+
+.home-game-title {
+  font-size: clamp(1.4rem, 4vw, 1.8rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  background: linear-gradient(135deg, #16a085, #833ab4, #fd1d1d);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.home-game-sub {
+  margin: 6px 0 18px;
+  font-size: 0.92rem;
+  color: #666;
+}
+
+/* ---- Responsive refinements ---- */
+@media (max-width: 600px) {
+  .home {
+    /* Extra top room so the absolute top bar never overlaps the hero badge */
+    padding: 68px 16px 140px;
+  }
+  .home-actions {
+    width: 100%;
+  }
+  .home-btn {
+    flex: 1 1 0;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 380px) {
+  .home-countdown {
+    padding: 14px;
+  }
+  .cd-unit {
+    padding: 8px 2px;
+  }
+}
+
+/* On large screens give the hero a touch more room */
+@media (min-width: 1024px) {
+  .home {
+    padding-top: 64px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .doodle,
+  .home-badge-ball,
+  .home-title-brand,
+  .home-title-accent,
+  .home-content,
+  .home-countdown,
+  .live-dot,
+  .ks-stick,
+  .ks-kick-leg,
+  .ks-goal,
+  .ks-ball,
+  .ks-goal-text {
+    animation: none;
+  }
+  .home-title-accent {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+  .ks-ball {
+    transform: translate(338px, 58px);
+  }
+  .ks-kick-leg {
+    transform: rotate(-34deg);
+  }
+  .ks-goal-text {
+    opacity: 1;
+  }
+}
