@@ -7,10 +7,13 @@ import SignInPage from "./pages/SignInPage";
 import SignUpPage from "./pages/SignUpPage";
 import NotFound from "./pages/NotFound";
 import ProtectedRoute from "./components/ProtectedRoute";
+import Navbar from "./components/Navbar";
 
 const App = () => {
   return (
-    <Routes>
+    <>
+      <Navbar />
+      <Routes>
       <Route path="/" element={<Home />} />
       <Route path="/leaderboard" element={<Leaderboard />} />
       <Route path="/sign-in/*" element={<SignInPage />} />
@@ -31,8 +34,9 @@ const App = () => {
           </ProtectedRoute>
         }
       />
-      <Route path="*" element={<NotFound />} />
-    </Routes>
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </>
   );
 };
 

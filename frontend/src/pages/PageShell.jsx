@@ -8,7 +8,7 @@ const PageShell = ({ badge, icon, title, subtitle, doodle = "ball", children }) 
   const BottomDoodle = doodle === "trophy" ? BallDoodle : TrophyDoodle;
 
   return (
-    <div className="page-bg relative min-h-screen overflow-hidden px-5 pb-16 pt-7 sm:px-6 sm:pt-8">
+    <div className="page-bg relative min-h-screen overflow-hidden px-5 pb-28 pt-7 sm:px-6 sm:pb-32 sm:pt-8">
       {/* Subtle decorative doodles, tucked into the corners so they never sit
           behind content cards. */}
       <TopDoodle className="animate-float pointer-events-none absolute right-[4%] top-[5%] w-12 text-ink/[0.06] sm:w-16" />

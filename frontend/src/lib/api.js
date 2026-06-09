@@ -22,9 +22,18 @@ const request = async (path, { method = "GET", body, token, headers } = {}) => {
 };
 
 export const api = {
-  getPosts: () => request("/get_all_posts"),
+  // Token is optional — when present the response includes the viewer's like state.
+  getPosts: (token) => request("/get_all_posts", token ? { token } : {}),
   createPost: (formData, token) =>
     request("/create_a_post", { method: "POST", body: formData, token }),
+  createTextPost: (text, token) =>
+    request("/create_a_text_post", { method: "POST", body: { text }, token }),
+  toggleLike: (id, token) =>
+    request(`/posts/${id}/like`, { method: "POST", token }),
+  reactToPost: (id, emoji, token) =>
+    request(`/posts/${id}/react`, { method: "POST", body: { emoji }, token }),
+  addComment: (id, text, token) =>
+    request(`/posts/${id}/comment`, { method: "POST", body: { text }, token }),
   getLeaderboard: (token) =>
     request("/leaderboard", token ? { token } : {}),
   submitScore: (score, token) =>
