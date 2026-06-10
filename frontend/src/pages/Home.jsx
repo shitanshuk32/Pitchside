@@ -2,8 +2,11 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import Typewriter from "./Typewriter";
 import FreeKickGame from "./FreeKickGame";
+import DailyChallenges from "../components/DailyChallenges";
+import OnboardingTour from "../components/OnboardingTour";
 import AuthControls from "../components/AuthControls";
 import { WORLD_CUP_FACTS } from "./facts";
+import { api } from "../lib/api";
 import "./Home.css";
 
 const BallDoodle = ({ className }) => (
@@ -117,6 +120,18 @@ const KICKOFF = new Date("2026-06-11T19:00:00-06:00");
 
 const pad = (n) => String(n).padStart(2, "0");
 
+const DONE_STATUSES = new Set(["FINISHED"]);
+
+const matchCountdown = (utcDate) => {
+  const diff = new Date(utcDate).getTime() - Date.now();
+  if (diff <= 0) return "Kicking off soon";
+  const mins = Math.round(diff / 60000);
+  if (mins < 60) return `Starts in ${mins}m`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m > 0 ? `Starts in ${h}h ${m}m` : `Starts in ${h}h`;
+};
+
 const Countdown = () => {
   const [diff, setDiff] = useState(() => KICKOFF.getTime() - Date.now());
 
@@ -130,28 +145,34 @@ const Countdown = () => {
 
   if (diff <= 0) {
     return (
-      <div className="home-countdown home-countdown--live">
-        <span className="home-countdown-label">
+      <section className="home-hero home-hero--live">
+        <div className="home-hero-bg" aria-hidden="true" />
+        <span className="home-hero-badge">🏆 FIFA WORLD CUP 2026</span>
+        <h2 className="home-hero-live-title">
           <span className="live-dot" /> The World Cup is underway
-        </span>
-        <p className="home-countdown-live-text">Let the matches begin ⚽</p>
-      </div>
+        </h2>
+        <p className="home-hero-live-text">Let the matches begin ⚽</p>
+      </section>
     );
   }
 
   const total = Math.floor(diff / 1000);
+  const days = Math.floor(total / 86400);
   const units = [
-    [Math.floor(total / 86400), "Days"],
+    [days, "Days"],
     [Math.floor((total % 86400) / 3600), "Hrs"],
     [Math.floor((total % 3600) / 60), "Min"],
     [total % 60, "Sec"],
   ];
 
   return (
-    <div className="home-countdown">
-      <span className="home-countdown-label">
-        <span className="live-dot" /> Kickoff in — Mexico City, Jun 11
-      </span>
+    <section className="home-hero">
+      <div className="home-hero-bg" aria-hidden="true" />
+      <span className="home-hero-badge">🏆 FIFA WORLD CUP 2026</span>
+      <h2 className="home-hero-days">
+        {days} {days === 1 ? "DAY" : "DAYS"} TO GO
+      </h2>
+      <p className="home-hero-venue">Mexico City · June 11</p>
       <div className="home-countdown-grid">
         {units.map(([v, l]) => (
           <div className="cd-unit" key={l}>
@@ -160,7 +181,94 @@ const Countdown = () => {
           </div>
         ))}
       </div>
-    </div>
+    </section>
+  );
+};
+
+const LIVE_STATUSES = new Set(["IN_PLAY", "PAUSED", "HALF_TIME"]);
+
+const Flag = ({ flag, name }) => {
+  if (flag) return <span className="home-match-flag">{flag}</span>;
+  return (
+    <span className="home-match-flag-fallback">
+      {(name || "?").slice(0, 2).toUpperCase()}
+    </span>
+  );
+};
+
+const TodayMatch = () => {
+  const [matches, setMatches] = useState(null);
+
+  useEffect(() => {
+    api.getMatchesToday(null)
+      .then((d) => {
+        setMatches((d.matches || []).slice(0, 2));
+      })
+      .catch(() => setMatches([]));
+  }, []);
+
+  if (!matches || matches.length === 0) return null;
+
+  return (
+    <section className="home-today-matches" data-tour="matches">
+      <div className="home-today-header">
+        <span className="home-today-label">📡 Today&apos;s Matches</span>
+        <Link to="/match-centre" className="home-today-link">
+          Match Centre →
+        </Link>
+      </div>
+      <div className="home-today-list">
+        {matches.map((m) => {
+          const isLive = LIVE_STATUSES.has(m.status);
+          const isDone = DONE_STATUSES.has(m.status);
+          const hasScore = m.score?.home !== null;
+          return (
+            <Link
+              key={m.matchId}
+              to="/predictions"
+              className={`home-today-card ${isLive ? "home-today-card--live" : ""}`}
+            >
+              {isLive && (
+                <span className="home-today-live-badge">
+                  <span className="home-today-live-dot" /> LIVE
+                  {m.minute != null ? ` ${m.minute}'` : ""}
+                </span>
+              )}
+              <div className="home-today-teams">
+                <div className="home-today-team-col">
+                  <Flag flag={m.homeTeam?.flag} name={m.homeTeam?.name} />
+                  <span className="home-today-team">
+                    {m.homeTeam?.shortName || m.homeTeam?.name}
+                  </span>
+                </div>
+                <div className="home-today-center">
+                  {hasScore ? (
+                    <span
+                      className={`home-today-score ${isLive ? "home-today-score--live" : ""}`}
+                    >
+                      {m.score.home} — {m.score.away}
+                    </span>
+                  ) : (
+                    <span className="home-today-vs">VS</span>
+                  )}
+                  {!isLive && !isDone && (
+                    <span className="home-today-countdown">
+                      ⏰ {matchCountdown(m.utcDate)}
+                    </span>
+                  )}
+                </div>
+                <div className="home-today-team-col">
+                  <Flag flag={m.awayTeam?.flag} name={m.awayTeam?.name} />
+                  <span className="home-today-team home-today-team--right">
+                    {m.awayTeam?.shortName || m.awayTeam?.name}
+                  </span>
+                </div>
+              </div>
+            </Link>
+          );
+        })}
+      </div>
+    </section>
   );
 };
 
@@ -200,35 +308,50 @@ const Home = () => {
       <div className="home-orb home-orb--2" />
 
       <div className="home-content">
-        {/* Header row: brand badge on the left, auth control on the right */}
+        {/* Immersive World Cup hero — first thing users see */}
+        <Countdown />
+
         <div className="home-header">
           <span className="home-badge">
             <span className="home-badge-ball" aria-hidden="true">
-              ⚽
+              🏆
             </span>
-            2026 FIFA World Cup
+            Pitchside · World Cup 2026
           </span>
           <AuthControls />
         </div>
         <h1 className="home-title">
-          <span className="home-title-eyebrow">Welcome to</span>
-          <span className="home-title-brand">Pitchside</span>
+          <span className="home-title-eyebrow">Your daily</span>
+          <span className="home-title-brand">Matchday Hub</span>
         </h1>
         <span className="home-title-accent" aria-hidden="true" />
         <p className="home-subtitle">
-          <strong>Where the world watches the World Cup together.</strong>
+          <strong>Predict. Play. Compete. All tournament long.</strong>
         </p>
 
-        <Countdown />
+        <TodayMatch />
 
-        <span className="home-fact-label">⚽ Did you know?</span>
-        <Typewriter
-          lines={lines}
-          typingSpeed={70}
-          deletingSpeed={45}
-          pauseBetweenLines={5500}
-          loop
-        />
+        <div data-tour="challenges">
+          <DailyChallenges />
+        </div>
+
+        <span className="home-fact-label">🏆 Did you know?</span>
+        <div className="home-facts-carousel">
+          <div className="home-facts-card">
+            <Typewriter
+              lines={lines}
+              typingSpeed={70}
+              deletingSpeed={45}
+              pauseBetweenLines={5500}
+              loop
+            />
+            <div className="home-facts-dots" aria-hidden="true">
+              {lines.slice(0, 4).map((_, i) => (
+                <span key={i} className={`home-facts-dot ${i === 0 ? "home-facts-dot--active" : ""}`} />
+              ))}
+            </div>
+          </div>
+        </div>
 
         <div className="home-actions">
           <Link to="/create_a_post" className="home-btn home-btn--primary">
@@ -265,18 +388,31 @@ const Home = () => {
           </div>
         </div>
 
-        <section className="home-game">
-          <h2 className="home-game-title">Free Kick Challenge</h2>
-          <p className="home-game-sub">
-            3 shots. Bend it past the keeper, climb the global leaderboard —
-            top 3 win a free custom jersey 🎽
-          </p>
+        <section className="home-game" id="free-kick" data-tour="freekick">
+          <div className="home-game-head">
+            <span className="home-game-badge">⚽ Penalty Shootout</span>
+            <h2 className="home-game-title">Free Kick Challenge</h2>
+            <p className="home-game-sub">
+              3 shots. Bend it past the keeper, climb the global leaderboard —
+              top 3 win a free custom jersey 🎽
+            </p>
+          </div>
           <FreeKickGame />
         </section>
+
+        <button
+          type="button"
+          className="home-replay-tour"
+          onClick={() => window.dispatchEvent(new CustomEvent("pitchside:start-tour"))}
+        >
+          ↻ Replay intro tour
+        </button>
       </div>
 
       {/* Stickman curls the ball into the goal (replays every 30s) */}
       <KickScene key={kickKey} />
+
+      <OnboardingTour />
     </div>
   );
 };

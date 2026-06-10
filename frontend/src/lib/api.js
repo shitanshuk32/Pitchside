@@ -38,6 +38,32 @@ export const api = {
     request("/leaderboard", token ? { token } : {}),
   submitScore: (score, token) =>
     request("/leaderboard/score", { method: "POST", body: { score }, token }),
+  getEngagementToday: (token) =>
+    request("/engagement/today", token ? { token } : {}),
+  recordEngagementActivity: (type, token) =>
+    request("/engagement/activity", {
+      method: "POST",
+      body: { type },
+      token,
+    }),
+
+  // Matches
+  getMatchesToday: (token) =>
+    request("/matches/today", token ? { token } : {}),
+  getMatchesLive: () => request("/matches/live"),
+  getGroupStandings: () => request("/matches/standings"),
+  getKnockoutBracket: (token) =>
+    request("/matches/bracket", token ? { token } : {}),
+
+  // Predictions
+  submitPrediction: (matchId, pick, token) =>
+    request(`/predictions/${matchId}`, { method: "POST", body: { pick }, token }),
+  getMyPredictions: (token) => request("/predictions/me", { token }),
+
+  // Bracket
+  saveBracket: (picks, token) =>
+    request("/bracket", { method: "POST", body: { picks }, token }),
+  getMyBracket: (token) => request("/bracket/me", { token }),
 };
 
 export { API_URL };

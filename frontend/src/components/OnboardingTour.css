@@ -1,0 +1,171 @@
+.tour-root {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  pointer-events: auto;
+}
+
+/* Full-screen dim for centered (no-target) steps */
+.tour-dim {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 12, 30, 0.72);
+  animation: tourFade 0.2s ease;
+}
+
+/* Spotlight cutout: the huge box-shadow dims everything except this rect */
+.tour-hole {
+  position: absolute;
+  border-radius: 16px;
+  box-shadow: 0 0 0 9999px rgba(15, 12, 30, 0.72);
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  pointer-events: none;
+  transition: all 0.3s ease;
+  animation: tourPulse 2s ease-in-out infinite;
+}
+
+.tour-card {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(92vw, 380px);
+  padding: 20px;
+  border-radius: 20px;
+  background: #ffffff;
+  box-shadow: 0 20px 50px rgba(15, 12, 30, 0.4);
+  text-align: center;
+  animation: tourPop 0.25s ease;
+}
+
+.tour-card--center {
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.tour-skip {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  background: none;
+  border: none;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #9ca3af;
+  cursor: pointer;
+}
+
+.tour-skip:hover {
+  color: #6b7280;
+}
+
+.tour-emoji {
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.tour-title {
+  margin: 10px 0 6px;
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #2c2c34;
+}
+
+.tour-body {
+  margin: 0 0 16px;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  color: #5a5a68;
+}
+
+.tour-dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.tour-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(44, 44, 52, 0.18);
+  transition: all 0.2s ease;
+}
+
+.tour-dot--active {
+  width: 20px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #16a085, #833ab4);
+}
+
+.tour-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.tour-btn {
+  flex: 1;
+  padding: 10px 16px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  border: none;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.tour-btn--primary {
+  background: linear-gradient(135deg, #833ab4, #fd1d1d);
+  color: #fff;
+  box-shadow: 0 6px 18px rgba(131, 58, 180, 0.3);
+}
+
+.tour-btn--primary:hover {
+  transform: translateY(-1px);
+}
+
+.tour-btn--ghost {
+  background: #f1f1f4;
+  color: #5a5a68;
+  flex: 0 0 auto;
+  padding: 10px 20px;
+}
+
+@keyframes tourFade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes tourPop {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) scale(0.95);
+  }
+}
+
+.tour-card--center {
+  animation: tourPopCenter 0.25s ease;
+}
+
+@keyframes tourPopCenter {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.95);
+  }
+}
+
+@keyframes tourPulse {
+  0%,
+  100% {
+    border-color: rgba(255, 255, 255, 0.85);
+  }
+  50% {
+    border-color: rgba(252, 176, 69, 0.95);
+  }
+}

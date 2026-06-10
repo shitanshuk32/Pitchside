@@ -4,6 +4,9 @@ import Home from "./pages/Home";
 import CreatePosts from "./pages/CreatePosts";
 import Feed from "./pages/Feed";
 import Leaderboard from "./pages/Leaderboard";
+import Predictions from "./pages/Predictions";
+import Bracket from "./pages/Bracket";
+import MatchCentre from "./pages/MatchCentre";
 import SignInPage from "./pages/SignInPage";
 import SignUpPage from "./pages/SignUpPage";
 import NotFound from "./pages/NotFound";
@@ -35,6 +38,9 @@ const App = () => {
             </ProtectedRoute>
           }
         />
+        <Route path="/predictions" element={<Predictions />} />
+        <Route path="/bracket" element={<Bracket />} />
+        <Route path="/match-centre" element={<MatchCentre />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </>

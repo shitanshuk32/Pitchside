@@ -10,6 +10,20 @@ const {
 const uploadFile = require("./services/storage.service");
 const postModel = require("./models/post.model");
 const scoreModel = require("./models/score.model");
+const predictionModel = require("./models/prediction.model");
+const bracketModel = require("./models/bracket.model");
+const matchModel = require("./models/match.model");
+const {
+  getEngagementToday,
+  recordActivity,
+} = require("./services/engagement.service");
+const {
+  getMatchesToday,
+  getLiveAndToday,
+  getGroupStandings,
+  getKnockoutBracket,
+  startSyncLoop,
+} = require("./services/match.service");
 
 const app = express();
 
@@ -148,6 +162,8 @@ app.post("/create_a_text_post", requireAuth(), async (req, res) => {
       author: { clerkUserId: userId, ...author },
     });
 
+    await recordActivity(userId, "post_chant");
+
     return res.status(201).json({
       message: "Chant posted successfully...",
       post: shapePost(post, userId),
@@ -213,6 +229,8 @@ app.post("/posts/:id/react", requireAuth(), async (req, res) => {
     }
 
     await post.save();
+    await recordActivity(userId, "react");
+
     return res.status(200).json(summarizeReactions(post, userId));
   } catch (err) {
     console.log("Error reacting", err);
@@ -253,6 +271,39 @@ app.post("/posts/:id/comment", requireAuth(), async (req, res) => {
   } catch (err) {
     console.log("Error adding comment", err);
     return res.status(500).json({ message: "Could not add comment" });
+  }
+});
+
+// ---- World Cup engagement (daily challenges + streaks) ----
+app.get("/engagement/today", async (req, res) => {
+  try {
+    const { userId } = getAuth(req) || {};
+    const payload = await getEngagementToday(userId);
+    return res.status(200).json(payload);
+  } catch (err) {
+    console.log("Error loading engagement", err);
+    return res.status(500).json({ message: "Could not load daily challenges" });
+  }
+});
+
+app.post("/engagement/activity", requireAuth(), async (req, res) => {
+  try {
+    const { userId } = getAuth(req);
+    const type = String(req.body?.type || "");
+    const result = await recordActivity(userId, type);
+
+    if (!result.ok) {
+      return res.status(400).json({ message: "Invalid activity" });
+    }
+
+    return res.status(200).json({
+      message: result.alreadyDone ? "Already completed" : "Challenge complete",
+      newXp: result.newXp || 0,
+      ...result.payload,
+    });
+  } catch (err) {
+    console.log("Error recording activity", err);
+    return res.status(500).json({ message: "Could not record activity" });
   }
 });
 
@@ -335,5 +386,297 @@ app.get("/leaderboard", async (req, res) => {
     return res.status(500).json({ message: "Could not load leaderboard" });
   }
 });
+
+// ---- Matches: shared data layer ----
+
+// Shape a cached match document into a clean API response.
+const shapeMatchResponse = (m) => ({
+  matchId: m.matchId,
+  homeTeam: m.homeTeam,
+  awayTeam: m.awayTeam,
+  utcDate: m.utcDate,
+  status: m.status,
+  minute: m.minute,
+  score: m.score,
+  goals: m.goals || [],
+  cards: m.cards || [],
+  round: m.round,
+  group: m.group,
+  venue: m.venue,
+});
+
+// Count community predictions for a list of matchIds and return pick percentages.
+const communityStats = async (matchIds) => {
+  const agg = await predictionModel.aggregate([
+    { $match: { matchId: { $in: matchIds } } },
+    {
+      $group: {
+        _id: { matchId: "$matchId", pick: "$pick" },
+        count: { $sum: 1 },
+      },
+    },
+  ]);
+
+  const stats = {};
+  for (const { _id, count } of agg) {
+    const mid = _id.matchId;
+    if (!stats[mid]) stats[mid] = { home: 0, draw: 0, away: 0, total: 0 };
+    stats[mid][_id.pick] = count;
+    stats[mid].total += count;
+  }
+
+  const result = {};
+  for (const [mid, s] of Object.entries(stats)) {
+    const t = s.total || 1;
+    result[mid] = {
+      home: Math.round((s.home / t) * 100),
+      draw: Math.round((s.draw / t) * 100),
+      away: Math.round((s.away / t) * 100),
+    };
+  }
+  return result;
+};
+
+// Today's matches for the prediction polls.
+app.get("/matches/today", async (req, res) => {
+  try {
+    const { userId } = getAuth(req) || {};
+    const matches = await getMatchesToday();
+    const matchIds = matches.map((m) => m.matchId);
+
+    const [dbCommunity, userPicks] = await Promise.all([
+      communityStats(matchIds),
+      userId
+        ? predictionModel
+            .find({ clerkUserId: userId, matchId: { $in: matchIds } })
+            .lean()
+        : [],
+    ]);
+
+    const community = { ...dbCommunity };
+
+    const pickMap = {};
+    for (const p of userPicks) pickMap[p.matchId] = p;
+
+    const data = matches.map((m) => {
+      const myPick = pickMap[m.matchId];
+      const canPick = ["SCHEDULED", "TIMED"].includes(m.status);
+      return {
+        ...shapeMatchResponse(m),
+        canPick,
+        myPick: myPick ? myPick.pick : null,
+        correct: myPick?.correct ?? null,
+        xpAwarded: myPick?.xpAwarded ?? 0,
+        community: myPick || !canPick ? community[m.matchId] || null : null,
+      };
+    });
+
+    return res.status(200).json({
+      matches: data,
+    });
+  } catch (err) {
+    console.log("Error loading today's matches", err);
+    return res.status(500).json({ message: "Could not load matches" });
+  }
+});
+
+// All of today's matches with live detail for the Match Centre.
+app.get("/matches/live", async (req, res) => {
+  try {
+    const matches = await getLiveAndToday();
+    return res.status(200).json({
+      matches: matches.map(shapeMatchResponse),
+    });
+  } catch (err) {
+    console.log("Error loading live matches", err);
+    return res.status(500).json({ message: "Could not load live matches" });
+  }
+});
+
+// Group standings for all 12 World Cup groups.
+app.get("/matches/standings", async (req, res) => {
+  try {
+    const standings = await getGroupStandings();
+    return res.status(200).json({ standings });
+  } catch (err) {
+    console.log("Error loading standings", err);
+    return res.status(500).json({ message: "Could not load standings" });
+  }
+});
+
+// Knockout bracket structure.
+app.get("/matches/bracket", async (req, res) => {
+  try {
+    const { userId } = getAuth(req) || {};
+    const matches = await getKnockoutBracket();
+    const matchIds = matches.map((m) => m.matchId);
+
+    const userBracket = userId
+      ? await bracketModel.findOne({ clerkUserId: userId }).lean()
+      : null;
+    const pickMap = {};
+    for (const p of userBracket?.picks || []) pickMap[p.matchId] = p;
+
+    const data = matches.map((m) => {
+      const myPick = pickMap[m.matchId];
+      return {
+        ...shapeMatchResponse(m),
+        myPick: myPick?.pick || null,
+      };
+    });
+
+    return res.status(200).json({
+      matches: data,
+      bracketScore: userBracket?.score || 0,
+    });
+  } catch (err) {
+    console.log("Error loading bracket", err);
+    return res.status(500).json({ message: "Could not load bracket" });
+  }
+});
+
+// ---- Predictions ----
+
+app.post("/predictions/:matchId", requireAuth(), async (req, res) => {
+  try {
+    const { userId } = getAuth(req);
+    const matchId = Number(req.params.matchId);
+    const pick = String(req.body?.pick || "");
+
+    if (!["home", "draw", "away"].includes(pick)) {
+      return res.status(400).json({ message: "Invalid pick" });
+    }
+
+    const match = await matchModel.findOne({ matchId }).lean();
+    if (!match) return res.status(404).json({ message: "Match not found" });
+
+    if (!["SCHEDULED", "TIMED"].includes(match.status)) {
+      return res.status(400).json({ message: "Predictions are locked for this match" });
+    }
+
+    const existing = await predictionModel.findOne({ clerkUserId: userId, matchId });
+    if (existing) {
+      existing.pick = pick;
+      existing.correct = null;
+      existing.xpAwarded = 0;
+      await existing.save();
+    } else {
+      await predictionModel.create({ clerkUserId: userId, matchId, pick });
+    }
+
+    await recordActivity(userId, "predict_match");
+
+    return res.status(200).json({ message: "Pick saved", pick });
+  } catch (err) {
+    console.log("Error saving prediction", err);
+    return res.status(500).json({ message: "Could not save prediction" });
+  }
+});
+
+app.get("/predictions/me", requireAuth(), async (req, res) => {
+  try {
+    const { userId } = getAuth(req);
+    const preds = await predictionModel
+      .find({ clerkUserId: userId })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const matchIds = [...new Set(preds.map((p) => p.matchId))];
+    const matchDocs = await matchModel
+      .find({ matchId: { $in: matchIds } })
+      .lean();
+    const matchMap = {};
+    for (const m of matchDocs) matchMap[m.matchId] = m;
+
+    const total = preds.length;
+    const graded = preds.filter((p) => p.correct !== null);
+    const correct = graded.filter((p) => p.correct).length;
+    const totalXp = preds.reduce((s, p) => s + (p.xpAwarded || 0), 0);
+
+    const history = preds.map((p) => {
+      const m = matchMap[p.matchId];
+      return {
+        matchId: p.matchId,
+        homeTeam: m?.homeTeam?.shortName || "?",
+        awayTeam: m?.awayTeam?.shortName || "?",
+        utcDate: m?.utcDate,
+        pick: p.pick,
+        correct: p.correct,
+        xpAwarded: p.xpAwarded,
+        score: m?.score,
+      };
+    });
+
+    return res.status(200).json({ total, correct, totalXp, history });
+  } catch (err) {
+    console.log("Error loading predictions", err);
+    return res.status(500).json({ message: "Could not load predictions" });
+  }
+});
+
+// ---- Bracket ----
+
+app.post("/bracket", requireAuth(), async (req, res) => {
+  try {
+    const { userId } = getAuth(req);
+    const picks = req.body?.picks;
+
+    if (!Array.isArray(picks)) {
+      return res.status(400).json({ message: "picks must be an array" });
+    }
+
+    const knockoutMatches = await getKnockoutBracket();
+    const openMatchIds = new Set(
+      knockoutMatches
+        .filter((m) => ["SCHEDULED", "TIMED"].includes(m.status))
+        .map((m) => m.matchId)
+    );
+
+    const existing = await bracketModel.findOne({ clerkUserId: userId });
+    const lockedPicks = (existing?.picks || []).filter(
+      (p) => !openMatchIds.has(p.matchId)
+    );
+    const lockedIds = new Set(lockedPicks.map((p) => p.matchId));
+
+    const newPicks = picks
+      .filter((p) => p.matchId && p.pick && openMatchIds.has(p.matchId))
+      .map((p) => ({ matchId: p.matchId, pick: String(p.pick) }));
+
+    const merged = [
+      ...lockedPicks,
+      ...newPicks.filter((p) => !lockedIds.has(p.matchId)),
+    ];
+
+    const entry = await bracketModel.findOneAndUpdate(
+      { clerkUserId: userId },
+      { picks: merged },
+      { new: true, upsert: true }
+    );
+
+    return res.status(200).json({ message: "Bracket saved", picks: entry.picks, score: entry.score });
+  } catch (err) {
+    console.log("Error saving bracket", err);
+    return res.status(500).json({ message: "Could not save bracket" });
+  }
+});
+
+app.get("/bracket/me", requireAuth(), async (req, res) => {
+  try {
+    const { userId } = getAuth(req);
+    const b = await bracketModel.findOne({ clerkUserId: userId }).lean();
+    return res.status(200).json({
+      picks: b?.picks || [],
+      score: b?.score || 0,
+    });
+  } catch (err) {
+    console.log("Error loading bracket", err);
+    return res.status(500).json({ message: "Could not load bracket" });
+  }
+});
+
+// Start the background match-sync loop when this module is loaded.
+if (process.env.FOOTBALL_DATA_API_KEY) {
+  startSyncLoop();
+}
 
 module.exports = app;

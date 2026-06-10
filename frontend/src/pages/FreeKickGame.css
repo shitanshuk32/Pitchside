@@ -1,80 +1,130 @@
+/* Penalty Shootout — premium full-screen stadium */
 .ffk {
   width: 100%;
-  max-width: 420px;
-  margin: 0 auto;
-  padding: 16px;
-  border-radius: 22px;
-  background: rgba(255, 255, 255, 0.82);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.85);
-  box-shadow:
-    0 8px 30px rgba(131, 58, 180, 0.12),
-    0 1px 3px rgba(0, 0, 0, 0.04);
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
 }
 
-.ffk-header {
+.ffk-hud {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 10px 14px;
+  border-radius: 16px;
+  background: rgba(17, 24, 39, 0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
+.ffk-header {
+  display: contents;
 }
 
 .ffk-energy {
   display: flex;
-  gap: 8px;
+  gap: 6px;
 }
 
 .ffk-pip {
-  width: 30px;
-  height: 30px;
+  width: 34px;
+  height: 34px;
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
-  font-size: 28px;
+  font-size: 1.4rem;
   line-height: 1;
   border-radius: 50%;
-  background: #fff;
+  background: rgba(255, 255, 255, 0.12);
   border: 2px solid var(--pip, #ccc);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--pip) 40%, transparent);
   transition: all 0.25s ease;
 }
 
 .ffk-pip.spent {
   filter: grayscale(1);
-  opacity: 0.4;
+  opacity: 0.35;
   transform: scale(0.85);
 }
 
 .ffk-pip.current {
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--pip) 30%, transparent);
+  box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.5), 0 0 20px color-mix(in srgb, var(--pip) 50%, transparent);
   animation: pipPulse 1.4s ease-in-out infinite;
 }
 
-@keyframes pipPulse {
-  50% {
-    transform: scale(1.12);
-  }
+.ffk-lives {
+  display: flex;
+  gap: 4px;
+}
+.ffk-heart {
+  font-size: 1rem;
+  opacity: 0.25;
+  filter: grayscale(1);
+  transition: all 0.2s ease;
+}
+.ffk-heart--on {
+  opacity: 1;
+  filter: none;
+  animation: heartBeat 1.2s ease-in-out infinite;
+}
+@keyframes heartBeat {
+  50% { transform: scale(1.08); }
 }
 
 .ffk-scores {
   display: flex;
-  gap: 14px;
-  font-size: 0.78rem;
-  color: #777;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.75);
 }
-
 .ffk-scores strong {
-  color: #4a154b;
-  font-size: 0.95rem;
+  color: #fbbf24;
+  font-size: 1.1rem;
 }
 
 .ffk-stage {
   position: relative;
   width: 100%;
+  min-height: min(72vh, 520px);
   aspect-ratio: 100 / 130;
-  border-radius: 16px;
+  border-radius: 20px;
   overflow: hidden;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 24px 60px rgba(0, 0, 0, 0.45),
+    inset 0 0 80px rgba(0, 0, 0, 0.2);
+}
+
+.ffk-stage::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 80% 40% at 50% 0%, rgba(255, 255, 255, 0.15), transparent 60%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.35) 0%, transparent 30%, transparent 70%, rgba(0, 0, 0, 0.4) 100%);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.ffk-stage::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 40%;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 80'%3E%3Cpath fill='%23000' opacity='0.15' d='M0 80 Q50 40 100 60 T200 50 T300 65 T400 55 L400 80 Z'/%3E%3C/svg%3E") bottom / 100% auto no-repeat;
+  pointer-events: none;
+  z-index: 1;
 }
 
 .ffk-pitch {
@@ -86,9 +136,53 @@
   -webkit-user-select: none;
   cursor: grab;
 }
-
 .ffk-pitch:active {
   cursor: grabbing;
+}
+
+/* Meters overlay */
+.ffk-meters {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  right: 12px;
+  display: flex;
+  gap: 10px;
+  z-index: 5;
+  pointer-events: none;
+}
+.ffk-meter {
+  flex: 1;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+.ffk-meter-label {
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.7);
+  margin-bottom: 4px;
+}
+.ffk-meter-track {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.15);
+  overflow: hidden;
+}
+.ffk-meter-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.08s linear;
+}
+.ffk-meter-fill--power {
+  background: linear-gradient(90deg, #fbbf24, #22c55e, #ef4444);
+}
+.ffk-meter-fill--curve {
+  background: linear-gradient(90deg, #7c3aed, #a855f7);
 }
 
 .ffk-banner {
@@ -96,56 +190,87 @@
   top: 38%;
   left: 50%;
   transform: translate(-50%, -50%);
-  padding: 10px 22px;
-  border-radius: 999px;
-  font-size: 1.25rem;
+  padding: 14px 28px;
+  border-radius: 20px;
+  font-size: 1.4rem;
   font-weight: 800;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.04em;
   color: #fff;
   white-space: nowrap;
-  animation: bannerPop 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  z-index: 10;
   pointer-events: none;
+  animation: bannerPop 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
-
 .ffk-banner--goal {
-  background: linear-gradient(135deg, #16a085, #2ecc71);
-  box-shadow: 0 10px 24px rgba(46, 204, 113, 0.4);
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  box-shadow: 0 16px 40px rgba(34, 197, 94, 0.5);
+}
+.ffk-banner--goal::after {
+  content: "+50 XP";
+  display: block;
+  margin-top: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  opacity: 0.9;
+  text-align: center;
+}
+.ffk-stage-wrap.ffk-stage--goal .ffk-stage {
+  animation: goalFlash 0.4s ease;
+}
+@keyframes goalFlash {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.3); }
 }
 
 .ffk-banner--saved,
 .ffk-banner--post {
-  background: linear-gradient(135deg, #e67e22, #f39c12);
-  box-shadow: 0 10px 24px rgba(243, 156, 18, 0.35);
+  background: linear-gradient(135deg, #f59e0b, #ea580c);
+  animation: bannerPop 0.4s ease both, shake 0.4s ease 0.3s;
 }
-
-.ffk-banner--miss {
-  background: linear-gradient(135deg, #c0392b, #e74c3c);
-  box-shadow: 0 10px 24px rgba(231, 76, 60, 0.35);
-}
-
-.ffk-banner--wide {
-  background: linear-gradient(135deg, #5d6d7e, #85929e);
-  box-shadow: 0 10px 24px rgba(133, 146, 158, 0.4);
-}
-
+.ffk-banner--miss,
+.ffk-banner--wide,
 .ffk-banner--nogoal {
-  background: linear-gradient(135deg, #b9770e, #e2a03f);
-  box-shadow: 0 10px 24px rgba(226, 160, 63, 0.4);
-  font-size: 1.05rem;
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  animation: bannerPop 0.4s ease both, shake 0.35s ease 0.25s;
+}
+@keyframes shake {
+  0%, 100% { transform: translate(-50%, -50%); }
+  25% { transform: translate(calc(-50% - 6px), -50%); }
+  75% { transform: translate(calc(-50% + 6px), -50%); }
 }
 
 @keyframes bannerPop {
   0% {
     opacity: 0;
-    transform: translate(-50%, -50%) scale(0.5);
+    transform: translate(-50%, -50%) scale(0.4);
   }
   60% {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1.12);
+    transform: translate(-50%, -50%) scale(1.15);
   }
   100% {
     opacity: 1;
     transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+.ffk-confetti {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9;
+  overflow: hidden;
+}
+.ffk-confetti span {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  animation: confettiFall 1.2s ease-out forwards;
+}
+@keyframes confettiFall {
+  to {
+    transform: translateY(120px) rotate(360deg);
+    opacity: 0;
   }
 }
 
@@ -156,38 +281,62 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 8px;
   text-align: center;
   padding: 20px;
   color: #fff;
-  background: rgba(20, 20, 28, 0.62);
-  backdrop-filter: blur(3px);
+  background: rgba(17, 24, 39, 0.75);
+  backdrop-filter: blur(8px);
+  z-index: 8;
 }
-
 .ffk-lock-title {
-  font-size: 1.2rem;
+  font-size: 1.3rem;
   font-weight: 800;
 }
-
 .ffk-lock-timer {
-  font-size: 1.6rem;
+  font-size: 1.8rem;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
-  background: linear-gradient(135deg, #fcb045, #fd1d1d);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: #fbbf24;
 }
-
 .ffk-lock-note {
-  font-size: 0.82rem;
+  font-size: 0.84rem;
   opacity: 0.85;
 }
 
+.ffk-challenges {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+}
+.ffk-challenge {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(124, 58, 237, 0.06);
+  border: 1px solid rgba(124, 58, 237, 0.15);
+  font-size: 0.78rem;
+}
+.ffk-challenge-reward {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(251, 191, 36, 0.2);
+  font-weight: 800;
+  color: #b45309;
+  white-space: nowrap;
+}
+
 .ffk-foot {
-  margin-top: 12px;
-  font-size: 0.84rem;
-  color: #555;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  font-size: 0.82rem;
+  color: #6b7280;
   text-align: center;
   line-height: 1.5;
 }
@@ -200,48 +349,41 @@
   justify-content: center;
   gap: 8px 16px;
   padding-top: 12px;
-  border-top: 1px solid rgba(0, 0, 0, 0.06);
 }
-
 .ffk-compete-status {
   font-size: 0.8rem;
   font-weight: 600;
-  color: #2a8a4e;
+  color: #22c55e;
 }
-
 .ffk-compete-cta {
   font-size: 0.8rem;
   font-weight: 700;
-  color: #833ab4;
+  color: #7c3aed;
   text-decoration: none;
 }
-
-.ffk-compete-cta:hover {
-  text-decoration: underline;
-}
-
 .ffk-compete-link {
   font-size: 0.8rem;
   font-weight: 600;
   color: #6b7280;
   text-decoration: none;
 }
-
 .ffk-compete-link:hover {
-  color: #833ab4;
+  color: #7c3aed;
 }
 
 .ffk-tribute {
-  margin-top: 8px;
+  margin-top: 10px;
   font-size: 0.76rem;
   font-style: italic;
   text-align: center;
-  color: #999;
+  color: #9ca3af;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .ffk-pip.current,
-  .ffk-banner {
+  .ffk-banner,
+  .ffk-heart--on,
+  .ffk-confetti span {
     animation: none;
   }
 }

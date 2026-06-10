@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@clerk/react";
 import { api } from "../lib/api";
+import { reportEngagement } from "../lib/engagement";
 import "./FreeKickGame.css";
 
 const RECHARGE_MS = 60 * 60 * 1000; // 1 hour
@@ -23,8 +24,9 @@ const GOAL_LEFT = 24;
 const GOAL_RIGHT = 76;
 const GOAL_LINE = 11; // base of the goalmouth (where the posts meet the grass)
 
-// Power meter (bottom-right)
-const POWER_X = 91;
+// Power meter (bottom-left, mirrored from the right so it isn't hidden under
+// the shooting hand/thumb on phones)
+const POWER_X = 5.8;
 const POWER_W = 3.2;
 const POWER_TOP = 86;
 const POWER_H = 38;
@@ -357,7 +359,8 @@ const FreeKickGame = () => {
     });
     phaseRef.current = "scoring";
     setPhase("scoring");
-  }, []);
+    reportEngagement("score_goal", getToken, isSignedIn);
+  }, [getToken, isSignedIn]);
 
   // ---- Main animation loop ----
   useEffect(() => {
@@ -597,6 +600,7 @@ const FreeKickGame = () => {
       if (ne <= 0) setRechargeAt(Date.now() + RECHARGE_MS);
       return ne;
     });
+    reportEngagement("play_free_kick", getToken, isSignedIn);
   };
 
   // Hidden dev helper: triple-click/tap the tribute line to refill instantly.
@@ -627,10 +631,13 @@ const FreeKickGame = () => {
   // Live preview of the exact path the ball will trace.
   const preview =
     aimActive && phase === "aim" ? buildTrajectory(aimPath) : null;
+  const curvePct = preview
+    ? Math.min(100, (Math.abs(preview.bend || 0) / 50) * 100)
+    : 0;
 
   return (
     <div className="ffk">
-      <div className="ffk-header">
+      <div className="ffk-hud">
         <div className="ffk-energy">
           {LEGENDS.map((lg, i) => {
             const spent = i < shotsTaken;
@@ -649,6 +656,16 @@ const FreeKickGame = () => {
             );
           })}
         </div>
+        <div className="ffk-lives" aria-label={`${energy} shots remaining`}>
+          {Array.from({ length: MAX_ENERGY }).map((_, i) => (
+            <span
+              key={i}
+              className={`ffk-heart ${i < energy ? "ffk-heart--on" : ""}`}
+            >
+              ❤️
+            </span>
+          ))}
+        </div>
         <div className="ffk-scores">
           <span>
             Score <strong>{score}</strong>
@@ -659,6 +676,7 @@ const FreeKickGame = () => {
         </div>
       </div>
 
+      <div className={`ffk-stage-wrap ${result === "GOAL" ? "ffk-stage--goal" : ""}`}>
       <div className="ffk-stage">
         <svg
           ref={svgRef}
@@ -884,7 +902,7 @@ const FreeKickGame = () => {
             </g>
           </g>
 
-          {/* Power meter (bottom-right) */}
+          {/* Power meter (bottom-left) */}
           <g>
             <defs>
               <linearGradient id="ffk-power" x1="0" y1="1" x2="0" y2="0">
@@ -923,10 +941,10 @@ const FreeKickGame = () => {
               rx="1.6"
               fill="url(#ffk-power)"
             />
-            {/* moving cursor marker */}
+            {/* moving cursor marker — arrow on the inner (pitch-facing) side */}
             <g transform={`translate(0, ${POWER_TOP + (1 - power) * POWER_H})`}>
               <path
-                d={`M${POWER_X - 2.6} 0 l2 -1.6 0 3.2 z`}
+                d={`M${POWER_X + POWER_W + 2.6} 0 l-2 -1.6 0 3.2 z`}
                 fill="#fff"
               />
               <line
@@ -953,19 +971,36 @@ const FreeKickGame = () => {
 
         {/* Result banner */}
         {result && (
-          <div className={`ffk-banner ffk-banner--${result.toLowerCase()}`}>
-            {result === "GOAL"
-              ? "GOAL! ⚽"
-              : result === "SAVED"
-                ? "SAVED! 🧤"
-                : result === "POST"
-                  ? "OFF THE POST! 🪵"
-                  : result === "WIDE"
-                    ? "JUST WIDE! 😬"
-                    : result === "NOGOAL"
-                      ? "NO GOAL — NOT FULLY OVER! 🚫"
-                      : "MISS! 😖"}
-          </div>
+          <>
+            {result === "GOAL" && (
+              <div className="ffk-confetti" aria-hidden="true">
+                {[...Array(12)].map((_, i) => (
+                  <span
+                    key={i}
+                    style={{
+                      left: `${10 + i * 7}%`,
+                      top: "20%",
+                      background: ["#fbbf24", "#7c3aed", "#22c55e", "#ef4444"][i % 4],
+                      animationDelay: `${i * 0.05}s`,
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+            <div className={`ffk-banner ffk-banner--${result.toLowerCase()}`}>
+              {result === "GOAL"
+                ? "GOOOOAL! ⚽"
+                : result === "SAVED"
+                  ? "SAVED! 🧤"
+                  : result === "POST"
+                    ? "OFF THE POST! 🪵"
+                    : result === "WIDE"
+                      ? "JUST WIDE! 😬"
+                      : result === "NOGOAL"
+                        ? "NO GOAL — NOT FULLY OVER! 🚫"
+                        : "MISS! 😖"}
+            </div>
+          </>
         )}
 
         {/* Lock overlay */}
@@ -978,6 +1013,41 @@ const FreeKickGame = () => {
             <div className="ffk-lock-note">Come back for 3 more shots ⚡</div>
           </div>
         )}
+
+        {(aimActive || phase === "shooting") && (
+          <div className="ffk-meters">
+            <div className="ffk-meter">
+              <div className="ffk-meter-label">Power</div>
+              <div className="ffk-meter-track">
+                <div
+                  className="ffk-meter-fill ffk-meter-fill--power"
+                  style={{ width: `${power * 100}%` }}
+                />
+              </div>
+            </div>
+            <div className="ffk-meter">
+              <div className="ffk-meter-label">Curve</div>
+              <div className="ffk-meter-track">
+                <div
+                  className="ffk-meter-fill ffk-meter-fill--curve"
+                  style={{ width: `${curvePct}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+      </div>
+
+      <div className="ffk-challenges">
+        <div className="ffk-challenge">
+          <span>🎯 Hit the top corner</span>
+          <span className="ffk-challenge-reward">Bonus XP</span>
+        </div>
+        <div className="ffk-challenge">
+          <span>⚽ Score 3 perfect goals</span>
+          <span className="ffk-challenge-reward">Streak bonus</span>
+        </div>
       </div>
 
       <div className="ffk-foot">
@@ -986,7 +1056,7 @@ const FreeKickGame = () => {
         ) : (
           <span>
             Drag to aim, curve your drag to bend it 🌀. Hit the{" "}
-            <strong style={{ color: "#2ecc71" }}>green PWR</strong> sweet spot —
+            <strong style={{ color: "#22c55e" }}>green PWR</strong> sweet spot —
             too soft or too hard sends it off.{" "}
             <strong style={{ color: currentLegend.color }}>
               {currentLegend.flag} {currentLegend.name}

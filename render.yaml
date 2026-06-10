@@ -19,3 +19,5 @@ services:
         sync: false
       - key: CLIENT_ORIGIN
         sync: false
+      - key: FOOTBALL_DATA_API_KEY
+        sync: false
