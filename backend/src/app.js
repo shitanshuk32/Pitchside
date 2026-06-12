@@ -67,7 +67,7 @@ const resolveProfile = async (userId) => {
 };
 
 // Supported reactions. The heart is the default and absorbs legacy likes.
-const REACTION_EMOJIS = ["❤️", "⚽", "🔥", "😱", "🐐", "👏"];
+const REACTION_EMOJIS = ["❤️", "⚽", "🔥", "😂", "😱", "🐐", "👏"];
 
 // Build the per-emoji counts + the caller's current reaction. Legacy heart
 // "likes" (from before reactions existed) are folded into the ❤️ count, and a

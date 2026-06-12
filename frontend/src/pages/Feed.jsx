@@ -5,7 +5,7 @@ import PageShell from "./PageShell";
 import { api } from "../lib/api";
 
 // Order matters: this is also the picker order. ❤️ stays first as the default.
-const REACTION_EMOJIS = ["❤️", "⚽", "🔥", "😱", "🐐", "👏"];
+const REACTION_EMOJIS = ["❤️", "⚽", "🔥", "😂", "😱", "🐐", "👏"];
 
 // Bold, high-contrast gradients (white text reads on all of them). Each Chant
 // post gets a stable one based on its id, so every chant feels distinct.
@@ -50,7 +50,7 @@ const useInView = () => {
 };
 
 const SkeletonCard = () => (
-  <article className="overflow-hidden rounded-3xl border border-white/70 bg-white/80 shadow-lg shadow-brand-purple/10 ring-1 ring-black/[0.03]">
+  <article className="overflow-hidden rounded-3xl border border-white/70 bg-white/80 shadow-lg shadow-brand-purple/10 ring-1 ring-black/3">
     <div className="flex items-center gap-2.5 px-3.5 pt-3.5 pb-3">
       <div className="h-9 w-9 animate-pulse rounded-full bg-brand-purple/10" />
       <div className="space-y-1.5">
@@ -154,7 +154,7 @@ const LikeBurst = () => (
 // texture. Longer chants shrink slightly so they stay readable.
 const ChantCard = ({ text, seed }) => (
   <div
-    className={`relative flex aspect-4/3 items-center justify-center overflow-hidden bg-linear-to-br ${pickChantTheme(
+    className={`chant-animated relative flex aspect-4/3 items-center justify-center overflow-hidden bg-linear-to-br ${pickChantTheme(
       seed
     )} px-5 py-6 text-center`}
   >
@@ -183,7 +183,7 @@ const ChantCard = ({ text, seed }) => (
   </div>
 );
 
-const PostCard = ({ post, isSignedIn, getToken }) => {
+const PostCard = ({ post, isSignedIn, getToken, index = 0 }) => {
   const [cardRef, inView] = useInView();
   const isText = post.type === "text";
   const [reactions, setReactions] = useState(post.reactions || []);
@@ -289,8 +289,12 @@ const PostCard = ({ post, isSignedIn, getToken }) => {
   };
 
   return (
-    <div ref={cardRef} className={`card-reveal ${inView ? "card-reveal--in" : ""}`}>
-    <article className="group/card flex flex-col overflow-hidden rounded-3xl border border-white/70 bg-white/80 shadow-lg shadow-brand-purple/10 ring-1 ring-black/[0.03] backdrop-blur-md transition duration-300 hover:-translate-y-1.5 hover:shadow-2xl hover:shadow-brand-purple/20">
+    <div
+      ref={cardRef}
+      className={`card-reveal ${inView ? "card-reveal--in" : ""}`}
+      style={{ transitionDelay: `${Math.min(index, 5) * 70}ms` }}
+    >
+    <article className="group/card flex flex-col overflow-hidden rounded-3xl border border-white/70 bg-white/80 shadow-lg shadow-brand-purple/10 ring-1 ring-black/3 backdrop-blur-md transition duration-300 hover:-translate-y-1.5 hover:shadow-2xl hover:shadow-brand-purple/20">
       <header className="flex items-center gap-2.5 px-3.5 pt-3.5 pb-3">
         <span className="shrink-0 rounded-full bg-linear-to-br from-brand-purple via-brand-red to-brand-gold p-[2px] shadow-sm shadow-brand-purple/20">
           <Avatar src={post.author?.imageUrl} name={post.author?.username} />
@@ -335,7 +339,7 @@ const PostCard = ({ post, isSignedIn, getToken }) => {
                   loading="lazy"
                 />
                 <div
-                  className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/20 to-transparent"
+                  className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-linear-to-t from-black/20 to-transparent"
                   aria-hidden="true"
                 />
               </>
@@ -384,7 +388,7 @@ const PostCard = ({ post, isSignedIn, getToken }) => {
                 disabled={!isSignedIn}
                 aria-pressed={mine}
                 aria-label={`React ${e}${count ? `, ${count} so far` : ""}`}
-                className={`relative inline-flex items-center gap-1 rounded-full px-1.5 py-1 transition ${
+                className={`group/react relative inline-flex items-center gap-1 rounded-full px-1.5 py-1 transition active:scale-90 ${
                   mine
                     ? "bg-brand-purple/10 ring-1 ring-brand-purple/25"
                     : "hover:-translate-y-0.5 hover:bg-brand-purple/5"
@@ -392,7 +396,7 @@ const PostCard = ({ post, isSignedIn, getToken }) => {
               >
                 <span
                   key={popping ? `p-${burstId}` : "still"}
-                  className={`text-lg leading-none ${
+                  className={`text-lg leading-none transition-transform duration-200 ease-out group-hover/react:-rotate-12 group-hover/react:scale-125 ${
                     popping ? "react-bounce inline-block" : "inline-block"
                   }`}
                 >
@@ -458,7 +462,7 @@ const PostCard = ({ post, isSignedIn, getToken }) => {
         )}
 
         {showComments && (
-          <div className="mt-3 space-y-3 border-t border-brand-purple/5 pt-3">
+          <div className="comments-in mt-3 space-y-3 border-t border-brand-purple/5 pt-3">
             {comments.length === 0 ? (
               <p className="text-xs text-neutral-400">
                 No comments yet — start the conversation.
@@ -625,17 +629,24 @@ const Feed = () => {
           <div className="mb-4 flex justify-end">
             <button
               onClick={load}
-              className="inline-flex shrink-0 items-center gap-1 rounded-full border border-brand-purple/15 bg-white/80 px-3 py-1.5 text-xs font-semibold text-brand-purple shadow-sm transition hover:border-brand-purple/30 hover:bg-brand-purple/5"
+              className="group inline-flex shrink-0 items-center gap-1 rounded-full border border-brand-purple/15 bg-white/80 px-3 py-1.5 text-xs font-semibold text-brand-purple shadow-sm transition hover:-translate-y-0.5 hover:border-brand-purple/30 hover:bg-brand-purple/5 hover:shadow-md active:scale-95"
             >
-              <span aria-hidden="true">↻</span> Refresh
+              <span
+                aria-hidden="true"
+                className="inline-block transition-transform duration-500 group-hover:rotate-360"
+              >
+                ↻
+              </span>{" "}
+              Refresh
             </button>
           </div>
 
           <div className="grid items-start gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {posts.map((post) => (
+            {posts.map((post, i) => (
               <PostCard
                 key={post._id}
                 post={post}
+                index={i}
                 isSignedIn={isSignedIn}
                 getToken={getToken}
               />
