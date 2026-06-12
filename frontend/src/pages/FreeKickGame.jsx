@@ -225,6 +225,10 @@ const FreeKickGame = () => {
   const syncedRef = useRef(saved.synced);
   const [synced, setSynced] = useState(false);
 
+  // The pitch stays inert behind a "Play" overlay until the user opts in, so
+  // stray touches while scrolling the page can never fire a shot.
+  const [armed, setArmed] = useState(false);
+
   const [ball, setBall] = useState({ ...BALL_ORIGIN });
   const [spin, setSpin] = useState(0);
   const [height, setHeight] = useState(0); // visual loft: 0 = grounded
@@ -557,7 +561,7 @@ const FreeKickGame = () => {
   };
 
   const onPointerDown = (e) => {
-    if (phaseRef.current !== "aim") return;
+    if (!armed || phaseRef.current !== "aim") return;
     e.currentTarget.setPointerCapture?.(e.pointerId);
     const p = toSvg(e);
     pathRef.current = [p];
@@ -613,27 +617,6 @@ const FreeKickGame = () => {
       return ne;
     });
     reportEngagement("play_free_kick", getToken, isSignedIn);
-  };
-
-  // Hidden dev helper: triple-click/tap the tribute line to refill instantly.
-  const secretRef = useRef({ count: 0, timer: null });
-  const handleSecret = () => {
-    const s = secretRef.current;
-    s.count += 1;
-    clearTimeout(s.timer);
-    s.timer = setTimeout(() => {
-      s.count = 0;
-    }, 700);
-    if (s.count >= 3) {
-      s.count = 0;
-      setRechargeAt(null);
-      setEnergy(MAX_ENERGY);
-      setResult(null);
-      ballRef.current = { ...BALL_ORIGIN };
-      setBall({ ...BALL_ORIGIN });
-      phaseRef.current = "aim";
-      setPhase("aim");
-    }
   };
 
   const remaining = rechargeAt ? Math.max(0, rechargeAt - now) : 0;
@@ -980,13 +963,36 @@ const FreeKickGame = () => {
         {/* Shot zone — only this area around the ball captures the aim gesture,
             so swiping anywhere else on the pitch scrolls the page normally
             instead of wasting a shot. */}
-        <div
-          className="ffk-shotzone"
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp}
-        />
+        {armed && (
+          <div
+            className="ffk-shotzone"
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerUp}
+          />
+        )}
+
+        {/* Translucent gate: the game only accepts touches after an explicit
+            "Play", so scrolling past the pitch can never waste a shot. */}
+        {!armed && phase !== "locked" && (
+          <div className="ffk-play">
+            <button
+              type="button"
+              className="ffk-play-btn"
+              onClick={() => setArmed(true)}
+            >
+              <span className="ffk-play-ico" aria-hidden="true">
+                ▶
+              </span>
+              Play
+            </button>
+            <span className="ffk-play-hint">
+              {energy} {energy === 1 ? "shot" : "shots"} ready — drag from the
+              ball to shoot
+            </span>
+          </div>
+        )}
 
         {/* Result banner */}
         {result && (
@@ -1100,7 +1106,7 @@ const FreeKickGame = () => {
         </Link>
       </div>
 
-      <p className="ffk-tribute" onClick={handleSecret} title="">
+      <p className="ffk-tribute">
         Their last dance 🐐 — a tribute to Messi, Ronaldo &amp; Neymar.
       </p>
     </div>

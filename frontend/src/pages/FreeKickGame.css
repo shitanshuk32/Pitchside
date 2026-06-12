@@ -289,6 +289,69 @@
   }
 }
 
+/* "Tap to play" gate — translucent so the pitch shows through, but it absorbs
+   every touch until the player explicitly opts in. */
+.ffk-play {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: rgba(17, 24, 39, 0.38);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+.ffk-play-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 38px;
+  border: none;
+  border-radius: 999px;
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  box-shadow:
+    0 12px 32px rgba(34, 197, 94, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
+  animation: playPulse 1.8s ease-in-out infinite;
+}
+.ffk-play-btn:hover {
+  transform: translateY(-2px) scale(1.04);
+  box-shadow: 0 16px 40px rgba(34, 197, 94, 0.55);
+}
+.ffk-play-btn:active {
+  transform: scale(0.96);
+}
+.ffk-play-ico {
+  font-size: 0.95rem;
+}
+.ffk-play-hint {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+@keyframes playPulse {
+  0%,
+  100% {
+    box-shadow:
+      0 12px 32px rgba(34, 197, 94, 0.45),
+      0 0 0 0 rgba(34, 197, 94, 0.45);
+  }
+  50% {
+    box-shadow:
+      0 12px 32px rgba(34, 197, 94, 0.45),
+      0 0 0 14px rgba(34, 197, 94, 0);
+  }
+}
+
 .ffk-lock {
   position: absolute;
   inset: 0;
@@ -398,6 +461,7 @@
   .ffk-pip.current,
   .ffk-banner,
   .ffk-heart--on,
+  .ffk-play-btn,
   .ffk-confetti span {
     animation: none;
   }
