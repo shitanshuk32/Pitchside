@@ -329,6 +329,18 @@
 .ffk-play-btn:active {
   transform: scale(0.96);
 }
+/* Sign-in variant of the gate button (rendered as a link) */
+.ffk-play-btn--signin {
+  text-decoration: none;
+  background: linear-gradient(135deg, #833ab4, #fd1d1d 70%, #fcb045);
+  box-shadow:
+    0 12px 32px rgba(131, 58, 180, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  animation: none;
+}
+.ffk-play-btn--signin:hover {
+  box-shadow: 0 16px 40px rgba(131, 58, 180, 0.6);
+}
 .ffk-play-ico {
   font-size: 0.95rem;
 }

@@ -219,7 +219,7 @@ const FreeKickGame = () => {
   // accumulated on the leaderboard), not a single best run.
   const [total, setTotal] = useState(saved.total);
 
-  const { getToken, isSignedIn } = useAuth();
+  const { getToken, isSignedIn, isLoaded } = useAuth();
   // How many goals have already been counted on the server for this browser,
   // so we only ever submit the new ones (the delta).
   const syncedRef = useRef(saved.synced);
@@ -974,23 +974,46 @@ const FreeKickGame = () => {
         )}
 
         {/* Translucent gate: the game only accepts touches after an explicit
-            "Play", so scrolling past the pitch can never waste a shot. */}
+            "Play", so scrolling past the pitch can never waste a shot. Playing
+            requires an account — signed-out visitors get a sign-up CTA instead,
+            so every goal is always counted toward a real leaderboard entry. */}
         {!armed && phase !== "locked" && (
           <div className="ffk-play">
-            <button
-              type="button"
-              className="ffk-play-btn"
-              onClick={() => setArmed(true)}
-            >
-              <span className="ffk-play-ico" aria-hidden="true">
-                ▶
-              </span>
-              Play
-            </button>
-            <span className="ffk-play-hint">
-              {energy} {energy === 1 ? "shot" : "shots"} ready — drag from the
-              ball to shoot
-            </span>
+            {isSignedIn ? (
+              <>
+                <button
+                  type="button"
+                  className="ffk-play-btn"
+                  onClick={() => setArmed(true)}
+                >
+                  <span className="ffk-play-ico" aria-hidden="true">
+                    ▶
+                  </span>
+                  Play
+                </button>
+                <span className="ffk-play-hint">
+                  {energy} {energy === 1 ? "shot" : "shots"} ready — drag from
+                  the ball to shoot
+                </span>
+              </>
+            ) : (
+              <>
+                <Link
+                  to="/sign-in?redirect_url=%2F"
+                  className="ffk-play-btn ffk-play-btn--signin"
+                >
+                  <span className="ffk-play-ico" aria-hidden="true">
+                    🔒
+                  </span>
+                  Sign in to play
+                </Link>
+                <span className="ffk-play-hint">
+                  {isLoaded
+                    ? "Free to join — every goal counts toward the jersey prize 🎽"
+                    : "Loading…"}
+                </span>
+              </>
+            )}
           </div>
         )}
 
