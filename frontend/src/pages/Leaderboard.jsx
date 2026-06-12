@@ -34,8 +34,8 @@ const PodiumSlot = ({ entry, place }) => {
       <span className="lb-pod-medal">{MEDALS[place - 1]}</span>
       <Avatar src={entry.imageUrl} name={entry.username} />
       <span className="lb-pod-name">{entry.username}</span>
-      <span className="lb-pod-score">{entry.bestScore}</span>
-      <span className="lb-pod-lbl">goals</span>
+      <span className="lb-pod-score">{entry.xp}</span>
+      <span className="lb-pod-lbl">XP</span>
     </div>
   );
 };
@@ -59,8 +59,8 @@ const Row = ({ entry, isMe, showDivider = false }) => (
         </div>
       </div>
       <div className="lb-goals">
-        <strong>{entry.bestScore}</strong>
-        <span> goals</span>
+        <strong>{entry.xp}</strong>
+        <span> XP</span>
       </div>
     </li>
   </>
@@ -119,7 +119,8 @@ const Leaderboard = () => {
           <span className="lb-badge">🏆 Global Ranking</span>
           <h1 className="lb-title">Leaderboard</h1>
           <p className="lb-sub">
-            Top 3 at the end of the World Cup win a free custom jersey.
+            Earn XP from goals, predictions &amp; daily challenges. Top 3 at the
+            end of the World Cup win a free custom jersey.
           </p>
         </header>
 
@@ -169,8 +170,12 @@ const Leaderboard = () => {
                 <div className="lb-me-rank">Rank #{me.rank}</div>
                 <div className="lb-me-stats">
                   <div className="lb-me-stat">
-                    <strong>{me.bestScore}</strong>
-                    <span>Best score</span>
+                    <strong>{me.xp}</strong>
+                    <span>Total XP</span>
+                  </div>
+                  <div className="lb-me-stat">
+                    <strong>{me.goals}</strong>
+                    <span>Goals</span>
                   </div>
                   <div className="lb-me-stat">
                     <strong>{players}</strong>

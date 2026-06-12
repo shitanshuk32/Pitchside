@@ -1,21 +1,5 @@
-import { SignIn } from "@clerk/react";
-import { Link } from "react-router-dom";
+import AuthLayout from "../components/AuthLayout";
 
-const SignInPage = () => (
-  <div className="page-bg flex min-h-screen flex-col items-center justify-center px-5 py-10">
-    <Link
-      to="/"
-      className="mb-6 text-sm font-semibold text-brand-teal-ink hover:underline"
-    >
-      ← Back to Pitchside
-    </Link>
-    <SignIn
-      routing="path"
-      path="/sign-in"
-      signUpUrl="/sign-up"
-      forceRedirectUrl="/leaderboard"
-    />
-  </div>
-);
+const SignInPage = () => <AuthLayout mode="sign-in" />;
 
 export default SignInPage;

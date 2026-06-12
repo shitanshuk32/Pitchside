@@ -6,9 +6,12 @@ import { pickSpotlight } from "../data/tournamentSpotlights";
 import "./DailyChallenges.css";
 
 const CHALLENGE_LINKS = {
+  create_post: "/create_a_post",
+  post_chant: "/create_a_post",
+  predict_match: "/predictions",
+  // legacy ids (no longer shown as quests, kept for safety)
   play_free_kick: "#free-kick",
   score_goal: "#free-kick",
-  post_chant: "/create_a_post",
   react: "/get_all_posts",
   view_leaderboard: "/leaderboard",
 };
@@ -90,6 +93,16 @@ const DailyChallenges = () => {
         </div>
       </div>
 
+      <div className="dc-howto">
+        <span className="dc-howto-ico" aria-hidden="true">🏆</span>
+        <p>
+          Score <a href="#free-kick">goals</a> (they stack up all tournament) and
+          complete the quests below to earn <strong>XP</strong>. The more you
+          stack, the higher you climb the{" "}
+          <Link to="/leaderboard">leaderboard</Link> — top 3 win a jersey.
+        </p>
+      </div>
+
       <div className="dc-progress">
         <div className="dc-progress-meta">
           <span>XP Progress</span>
@@ -109,6 +122,19 @@ const DailyChallenges = () => {
       </div>
 
       <ul className="dc-list">
+        <li className="dc-item dc-item--ongoing">
+          <a href="#free-kick" className="dc-link">
+            <span className="dc-check dc-check--ongoing" aria-hidden="true">
+              ⚽
+            </span>
+            <span className="dc-label">
+              Score goals
+              <span className="dc-sub">Unlimited — they add up all tournament</span>
+            </span>
+            <span className="dc-xp">+10 XP each</span>
+          </a>
+        </li>
+
         {data.challenges.map((c) => {
           const href = CHALLENGE_LINKS[c.id] || "#free-kick";
           const isHash = href.startsWith("#");

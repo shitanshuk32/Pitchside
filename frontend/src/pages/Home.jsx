@@ -116,7 +116,8 @@ const KickScene = () => (
 );
 
 // Opening match of the 2026 FIFA World Cup — Mexico City, June 11, 2026.
-const KICKOFF = new Date("2026-06-11T19:00:00-06:00");
+// Kick-off is 1:00 PM local (CST, UTC-6) = 19:00 UTC.
+const KICKOFF = new Date("2026-06-11T19:00:00Z");
 
 const pad = (n) => String(n).padStart(2, "0");
 
@@ -308,9 +309,6 @@ const Home = () => {
       <div className="home-orb home-orb--2" />
 
       <div className="home-content">
-        {/* Immersive World Cup hero — first thing users see */}
-        <Countdown />
-
         <div className="home-header">
           <span className="home-badge">
             <span className="home-badge-ball" aria-hidden="true">
@@ -318,8 +316,12 @@ const Home = () => {
             </span>
             Pitchside · World Cup 2026
           </span>
-          <AuthControls />
+          <AuthControls large />
         </div>
+
+        {/* Immersive World Cup hero */}
+        <Countdown />
+
         <h1 className="home-title">
           <span className="home-title-eyebrow">Your daily</span>
           <span className="home-title-brand">Matchday Hub</span>

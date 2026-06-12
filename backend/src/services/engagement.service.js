@@ -3,36 +3,21 @@ const engagementModel = require("../models/engagement.model");
 const TOURNAMENT_START = new Date("2026-06-11T00:00:00Z");
 const TOURNAMENT_DAYS = 39;
 
+// The daily quests are now a FIXED set (no random rotation). Each can be earned
+// once per day. Goals are handled separately — they accumulate continuously
+// toward the leaderboard (see GOAL_XP in app.js), so they aren't a one-off quest.
 const CHALLENGE_POOL = [
   {
-    id: "play_free_kick",
-    label: "Take your 3 free kicks",
-    emoji: "⚽",
-    xp: 10,
-  },
-  {
-    id: "score_goal",
-    label: "Score at least 1 goal",
-    emoji: "🥅",
-    xp: 25,
+    id: "create_post",
+    label: "Create a post",
+    emoji: "📸",
+    xp: 30,
   },
   {
     id: "post_chant",
     label: "Share a World Cup chant",
     emoji: "📣",
     xp: 20,
-  },
-  {
-    id: "react",
-    label: "React to a squad post",
-    emoji: "🔥",
-    xp: 15,
-  },
-  {
-    id: "view_leaderboard",
-    label: "Check the leaderboard",
-    emoji: "🏆",
-    xp: 10,
   },
   {
     id: "predict_match",
@@ -46,6 +31,16 @@ const CHALLENGE_POOL = [
 const EXTRA_ACTIVITIES = new Set(["predict_match_correct"]);
 
 const VALID_CHALLENGE_IDS = new Set(CHALLENGE_POOL.map((c) => c.id));
+
+// Activities the client still reports (playing, scoring, reacting, browsing)
+// that no longer award standalone XP, but should be accepted as a sign of life
+// so they keep the player's daily streak alive.
+const KNOWN_ACTIVITIES = new Set([
+  "play_free_kick",
+  "score_goal",
+  "react",
+  "view_leaderboard",
+]);
 
 const getTodayKey = () => new Date().toISOString().slice(0, 10);
 
@@ -94,21 +89,8 @@ const getTournamentInfo = () => {
   };
 };
 
-// Same three challenges for every user on a given UTC date.
-const getDailyChallenges = (dateKey) => {
-  let seed = 0;
-  for (let i = 0; i < dateKey.length; i++) {
-    seed += dateKey.charCodeAt(i) * (i + 1);
-  }
-
-  const pool = [...CHALLENGE_POOL];
-  for (let i = pool.length - 1; i > 0; i--) {
-    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-    const j = seed % (i + 1);
-    [pool[i], pool[j]] = [pool[j], pool[i]];
-  }
-  return pool.slice(0, 3);
-};
+// The same fixed quests every day for every user.
+const getDailyChallenges = () => [...CHALLENGE_POOL];
 
 const ensureToday = (eng, today) => {
   if (eng.todayDate !== today) {
@@ -169,39 +151,59 @@ const getEngagementToday = async (userId) => {
   return shapeEngagementResponse(eng, today);
 };
 
-const recordActivity = async (userId, challengeId) => {
+// Lazily cache the player's display profile on the engagement doc so the
+// unified leaderboard can show them even if they never score a goal. We only
+// invoke the (Clerk) resolver once per user — when no profile is stored yet.
+const applyProfile = async (eng, getProfile) => {
+  if (!getProfile || eng.username) return;
+  try {
+    const p = await getProfile();
+    if (p && p.username) {
+      eng.username = p.username;
+      eng.imageUrl = p.imageUrl || "";
+    }
+  } catch {
+    // Non-fatal: profile resolution can fail without blocking XP.
+  }
+};
+
+const recordActivityOnce = async (userId, challengeId, getProfile = null) => {
   // predict_match_correct awards bonus XP directly without being a daily challenge.
   if (EXTRA_ACTIVITIES.has(challengeId)) {
     const CORRECT_PREDICTION_XP = 15;
     let eng = await engagementModel.findOne({ clerkUserId: userId });
     if (!eng) eng = new engagementModel({ clerkUserId: userId });
+    await applyProfile(eng, getProfile);
     eng.totalXp += CORRECT_PREDICTION_XP;
     await eng.save();
     return { ok: true, newXp: CORRECT_PREDICTION_XP };
   }
 
-  if (!VALID_CHALLENGE_IDS.has(challengeId)) {
+  const isQuest = VALID_CHALLENGE_IDS.has(challengeId);
+  if (!isQuest && !KNOWN_ACTIVITIES.has(challengeId)) {
     return { ok: false, reason: "invalid_challenge" };
   }
 
   const today = getTodayKey();
-  const todaysChallenges = getDailyChallenges(today);
-  if (!todaysChallenges.some((c) => c.id === challengeId)) {
-    // Valid activity, but it isn't one of today's rotating challenges.
-    // The frontend reports activities proactively (e.g. visiting the
-    // leaderboard or playing the game), so this is expected — acknowledge it
-    // as a benign no-op instead of a 400 to avoid noisy client errors.
-    return { ok: true, skipped: true };
-  }
 
   let eng = await engagementModel.findOne({ clerkUserId: userId });
   if (!eng) {
     eng = new engagementModel({ clerkUserId: userId });
   }
+  await applyProfile(eng, getProfile);
+
+  if (!isQuest) {
+    // Recognised activity (playing, scoring, browsing) that doesn't award XP on
+    // its own. Keep the streak alive and persist any captured profile.
+    updateStreak(eng, today);
+    if (eng.isModified()) await eng.save();
+    return { ok: true, skipped: true };
+  }
 
   ensureToday(eng, today);
 
   if (eng.todayCompleted.includes(challengeId)) {
+    if (eng.isModified()) await eng.save();
     return {
       ok: true,
       alreadyDone: true,
@@ -221,6 +223,24 @@ const recordActivity = async (userId, challengeId) => {
     newXp: challenge.xp,
     payload: shapeEngagementResponse(eng, today),
   };
+};
+
+// The client fires several activities at once while playing, so they can race
+// on the same engagement doc: two requests may both try to insert it (E11000
+// duplicate key) or both save edits to its arrays (Mongoose VersionError).
+// Re-running re-reads the latest doc, so retry a couple of times on those.
+const isRetryableRaceError = (err) =>
+  !!err && (err.code === 11000 || err.name === "VersionError");
+
+const recordActivity = async (userId, challengeId, getProfile = null) => {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await recordActivityOnce(userId, challengeId, getProfile);
+    } catch (err) {
+      if (isRetryableRaceError(err) && attempt < 3) continue;
+      throw err;
+    }
+  }
 };
 
 module.exports = {

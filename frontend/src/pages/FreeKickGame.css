@@ -131,12 +131,27 @@
   display: block;
   width: 100%;
   height: 100%;
-  touch-action: none;
+  /* Allow vertical page scrolling when the finger is over the pitch; only the
+     ball zone (below) claims the gesture for shooting. */
+  touch-action: pan-y;
   user-select: none;
   -webkit-user-select: none;
+}
+
+/* Interactive area around the ball (bottom centre of the pitch). It owns the
+   aim/shoot gesture and disables scrolling only here, so accidental shots while
+   scrolling the page are avoided. */
+.ffk-shotzone {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  bottom: 0;
+  height: 46%;
+  z-index: 4;
+  touch-action: none;
   cursor: grab;
 }
-.ffk-pitch:active {
+.ffk-shotzone:active {
   cursor: grabbing;
 }
 

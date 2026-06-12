@@ -10,6 +10,7 @@ const {
 const uploadFile = require("./services/storage.service");
 const postModel = require("./models/post.model");
 const scoreModel = require("./models/score.model");
+const engagementModel = require("./models/engagement.model");
 const predictionModel = require("./models/prediction.model");
 const bracketModel = require("./models/bracket.model");
 const matchModel = require("./models/match.model");
@@ -48,6 +49,11 @@ app.get("/", (req, res) => {
 
 // Largest sane score for the Free Kick Challenge — basic anti-cheat guard.
 const MAX_REASONABLE_SCORE = 9999;
+
+// The leaderboard ranks everyone by a single unified XP total that blends
+// every way to earn points: free-kick goals, match predictions and daily
+// challenges. Each goal scored in the swipe game is worth this much XP.
+const GOAL_XP = 10;
 
 // Resolve a friendly display name + avatar from the authenticated Clerk user.
 const resolveProfile = async (userId) => {
@@ -131,6 +137,8 @@ app.post(
         author: { clerkUserId: userId, ...author },
       });
 
+      await recordActivity(userId, "create_post", () => Promise.resolve(author));
+
       return res.status(201).json({
         message: "Post created successfully...",
         post: shapePost(post, userId),
@@ -162,7 +170,7 @@ app.post("/create_a_text_post", requireAuth(), async (req, res) => {
       author: { clerkUserId: userId, ...author },
     });
 
-    await recordActivity(userId, "post_chant");
+    await recordActivity(userId, "post_chant", () => Promise.resolve(author));
 
     return res.status(201).json({
       message: "Chant posted successfully...",
@@ -229,7 +237,7 @@ app.post("/posts/:id/react", requireAuth(), async (req, res) => {
     }
 
     await post.save();
-    await recordActivity(userId, "react");
+    await recordActivity(userId, "react", () => resolveProfile(userId));
 
     return res.status(200).json(summarizeReactions(post, userId));
   } catch (err) {
@@ -290,7 +298,9 @@ app.post("/engagement/activity", requireAuth(), async (req, res) => {
   try {
     const { userId } = getAuth(req);
     const type = String(req.body?.type || "");
-    const result = await recordActivity(userId, type);
+    const result = await recordActivity(userId, type, () =>
+      resolveProfile(userId)
+    );
 
     if (!result.ok) {
       return res.status(400).json({ message: "Invalid activity" });
@@ -308,32 +318,46 @@ app.post("/engagement/activity", requireAuth(), async (req, res) => {
 });
 
 // ---- Leaderboard ----
-// Submit a score; we only keep the user's personal best.
+// Add goals to the user's running tournament total. The body carries `goals`
+// (the number of new goals scored since the client last synced), which we
+// accumulate onto the existing total.
 app.post("/leaderboard/score", requireAuth(), async (req, res) => {
   try {
     const { userId } = getAuth(req);
-    const raw = Number(req.body?.score);
+    const raw = Number(req.body?.goals ?? req.body?.score);
 
-    if (!Number.isFinite(raw) || raw < 0) {
-      return res.status(400).json({ message: "Invalid score" });
+    if (!Number.isFinite(raw) || raw <= 0) {
+      return res.status(400).json({ message: "Invalid goal count" });
     }
-    const score = Math.min(Math.floor(raw), MAX_REASONABLE_SCORE);
+    // Clamp a single submission so a bad client can't inflate the total.
+    const delta = Math.min(Math.floor(raw), MAX_REASONABLE_SCORE);
 
     const { username, imageUrl } = await resolveProfile(userId);
 
-    const existing = await scoreModel.findOne({ clerkUserId: userId });
-    const bestScore = Math.max(existing?.bestScore || 0, score);
+    // Goals are submitted in quick succession, so concurrent first-time
+    // submissions can race to create the (unique) score doc. Retry once on a
+    // duplicate-key error — the second attempt finds the doc and just $inc's.
+    const upsertScore = () =>
+      scoreModel.findOneAndUpdate(
+        { clerkUserId: userId },
+        { $inc: { totalScore: delta }, $set: { username, imageUrl } },
+        { new: true, upsert: true }
+      );
 
-    const entry = await scoreModel.findOneAndUpdate(
-      { clerkUserId: userId },
-      { clerkUserId: userId, username, imageUrl, bestScore },
-      { new: true, upsert: true, setDefaultsOnInsert: true }
-    );
+    let entry;
+    try {
+      entry = await upsertScore();
+    } catch (err) {
+      if (err && err.code === 11000) {
+        entry = await upsertScore();
+      } else {
+        throw err;
+      }
+    }
 
     return res.status(200).json({
-      message: "Score saved",
-      bestScore: entry.bestScore,
-      improved: bestScore > (existing?.bestScore || 0),
+      message: "Goals counted",
+      totalScore: entry.totalScore,
     });
   } catch (err) {
     console.log("Error saving score", err);
@@ -341,43 +365,74 @@ app.post("/leaderboard/score", requireAuth(), async (req, res) => {
   }
 });
 
-// Public top list. Optionally returns the caller's own rank when signed in.
+// Public top list, ranked by unified XP. We merge the two XP sources — goals
+// scored (score collection) and prediction/challenge XP (engagement
+// collection) — into a single combined total per player. Optionally returns
+// the caller's own rank when signed in.
 app.get("/leaderboard", async (req, res) => {
   try {
     const limit = Math.min(Number(req.query.limit) || 50, 100);
-    const top = await scoreModel
-      .find()
-      .sort({ bestScore: -1, updatedAt: 1 })
-      .limit(limit)
-      .lean();
 
-    const players = await scoreModel.estimatedDocumentCount();
+    const [scores, engagements] = await Promise.all([
+      scoreModel
+        .find()
+        .select("clerkUserId username imageUrl totalScore")
+        .lean(),
+      engagementModel
+        .find()
+        .select("clerkUserId username imageUrl totalXp")
+        .lean(),
+    ]);
 
-    const leaders = top.map((e, i) => ({
-      rank: i + 1,
-      username: e.username,
-      imageUrl: e.imageUrl,
-      bestScore: e.bestScore,
-      clerkUserId: e.clerkUserId,
-    }));
+    const byUser = new Map();
+    const ensure = (id) => {
+      let u = byUser.get(id);
+      if (!u) {
+        u = { clerkUserId: id, username: "", imageUrl: "", goals: 0, xp: 0 };
+        byUser.set(id, u);
+      }
+      return u;
+    };
+
+    // Goals contribute GOAL_XP each toward the unified total.
+    for (const s of scores) {
+      const u = ensure(s.clerkUserId);
+      u.goals = s.totalScore || 0;
+      u.xp += (s.totalScore || 0) * GOAL_XP;
+      if (s.username) u.username = s.username;
+      if (s.imageUrl) u.imageUrl = s.imageUrl;
+    }
+
+    // Prediction + daily-challenge XP is already accumulated on engagement.
+    for (const e of engagements) {
+      const u = ensure(e.clerkUserId);
+      u.xp += e.totalXp || 0;
+      if (!u.username && e.username) u.username = e.username;
+      if (!u.imageUrl && e.imageUrl) u.imageUrl = e.imageUrl;
+    }
+
+    const ranked = [...byUser.values()]
+      .filter((u) => u.xp > 0)
+      .sort((a, b) => b.xp - a.xp || b.goals - a.goals);
+
+    const players = ranked.length;
+
+    const shape = (u, rank) => ({
+      rank,
+      username: u.username || "Player",
+      imageUrl: u.imageUrl,
+      xp: u.xp,
+      goals: u.goals,
+      clerkUserId: u.clerkUserId,
+    });
+
+    const leaders = ranked.slice(0, limit).map((u, i) => shape(u, i + 1));
 
     let me = null;
     const { userId } = getAuth(req) || {};
     if (userId) {
-      const mine = await scoreModel.findOne({ clerkUserId: userId }).lean();
-      if (mine) {
-        const rank =
-          (await scoreModel.countDocuments({
-            bestScore: { $gt: mine.bestScore },
-          })) + 1;
-        me = {
-          rank,
-          username: mine.username,
-          imageUrl: mine.imageUrl,
-          bestScore: mine.bestScore,
-          clerkUserId: mine.clerkUserId,
-        };
-      }
+      const idx = ranked.findIndex((u) => u.clerkUserId === userId);
+      if (idx !== -1) me = shape(ranked[idx], idx + 1);
     }
 
     return res.status(200).json({ leaders, players, me });
@@ -564,7 +619,7 @@ app.post("/predictions/:matchId", requireAuth(), async (req, res) => {
       await predictionModel.create({ clerkUserId: userId, matchId, pick });
     }
 
-    await recordActivity(userId, "predict_match");
+    await recordActivity(userId, "predict_match", () => resolveProfile(userId));
 
     return res.status(200).json({ message: "Pick saved", pick });
   } catch (err) {

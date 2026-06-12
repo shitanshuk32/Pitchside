@@ -41,6 +41,26 @@ const loadNum = (key) => {
   return Number.isNaN(v) ? null : v;
 };
 
+// Read the persisted game state synchronously, before the first render. Doing
+// this in a mount effect (the old approach) raced with the persist effects,
+// which briefly wrote the default full-energy state back to localStorage — so
+// reloading or navigating away and back refilled the player's shots.
+const loadSavedState = () => {
+  let energy = loadNum("ffk_energy");
+  let rechargeAt = loadNum("ffk_rechargeAt");
+  if (energy === null) energy = MAX_ENERGY;
+  if (energy <= 0 && rechargeAt && Date.now() >= rechargeAt) {
+    energy = MAX_ENERGY;
+    rechargeAt = null;
+  }
+  return {
+    energy,
+    rechargeAt,
+    total: loadNum("ffk_total") || 0,
+    synced: loadNum("ffk_synced") || 0,
+  };
+};
+
 const GOAL_TOP = 4;
 const POST_HW = 1.6; // post hit tolerance
 
@@ -183,17 +203,26 @@ const pointAt = (tr, d) => {
 };
 
 const FreeKickGame = () => {
-  const [energy, setEnergy] = useState(MAX_ENERGY);
-  const [rechargeAt, setRechargeAt] = useState(null);
+  // Hydrate once from localStorage before the first render (lazy initializer
+  // runs exactly once per mount).
+  const [saved] = useState(loadSavedState);
+
+  const [energy, setEnergy] = useState(saved.energy);
+  const [rechargeAt, setRechargeAt] = useState(saved.rechargeAt);
   const [now, setNow] = useState(Date.now());
 
-  const [phase, setPhase] = useState("aim"); // aim | shooting | result | locked
+  // aim | shooting | result | locked
+  const [phase, setPhase] = useState(saved.energy > 0 ? "aim" : "locked");
   const [result, setResult] = useState(null);
   const [score, setScore] = useState(0);
-  const [best, setBest] = useState(0);
+  // Running total of goals across the whole tournament (persisted locally and
+  // accumulated on the leaderboard), not a single best run.
+  const [total, setTotal] = useState(saved.total);
 
   const { getToken, isSignedIn } = useAuth();
-  const lastSubmittedRef = useRef(0);
+  // How many goals have already been counted on the server for this browser,
+  // so we only ever submit the new ones (the delta).
+  const syncedRef = useRef(saved.synced);
   const [synced, setSynced] = useState(false);
 
   const [ball, setBall] = useState({ ...BALL_ORIGIN });
@@ -209,8 +238,8 @@ const FreeKickGame = () => {
   const aimStartRef = useRef(0);
 
   // Mutable refs for the animation loop
-  const phaseRef = useRef("aim");
-  const energyRef = useRef(MAX_ENERGY);
+  const phaseRef = useRef(saved.energy > 0 ? "aim" : "locked");
+  const energyRef = useRef(saved.energy);
   const ballRef = useRef({ ...BALL_ORIGIN });
   const trajRef = useRef(null);
   const spinRef = useRef(0);
@@ -223,25 +252,6 @@ const FreeKickGame = () => {
 
   const shotsTaken = MAX_ENERGY - energy;
   const currentLegend = LEGENDS[Math.min(shotsTaken, MAX_ENERGY - 1)];
-
-  // ---- Load saved state ----
-  useEffect(() => {
-    let e = loadNum("ffk_energy");
-    let r = loadNum("ffk_rechargeAt");
-    const b = loadNum("ffk_best");
-    if (e === null) e = MAX_ENERGY;
-    if (e <= 0 && r && Date.now() >= r) {
-      e = MAX_ENERGY;
-      r = null;
-    }
-    setEnergy(e);
-    setRechargeAt(r);
-    setBest(b || 0);
-    energyRef.current = e;
-    const startPhase = e > 0 ? "aim" : "locked";
-    setPhase(startPhase);
-    phaseRef.current = startPhase;
-  }, []);
 
   // ---- Persist energy & recharge ----
   useEffect(() => {
@@ -260,26 +270,30 @@ const FreeKickGame = () => {
     return () => clearInterval(id);
   }, []);
 
-  // ---- Sync personal best to the global leaderboard (signed-in only) ----
+  // ---- Add new goals to the global leaderboard total (signed-in only) ----
+  // We submit only the delta (goals scored since the last successful sync), so
+  // the server keeps an accurate running total even across reloads.
   useEffect(() => {
-    if (!isSignedIn || best <= 0 || best <= lastSubmittedRef.current) return;
+    if (!isSignedIn || total <= syncedRef.current) return;
     let cancelled = false;
     (async () => {
       try {
+        const delta = total - syncedRef.current;
         const token = await getToken();
-        await api.submitScore(best, token);
+        await api.addGoals(delta, token);
         if (!cancelled) {
-          lastSubmittedRef.current = best;
+          syncedRef.current = total;
+          localStorage.setItem("ffk_synced", String(total));
           setSynced(true);
         }
       } catch {
-        // Network/backend down — will retry on the next new best.
+        // Network/backend down — will retry on the next goal.
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [best, isSignedIn, getToken]);
+  }, [total, isSignedIn, getToken]);
 
   useEffect(() => {
     if (energy <= 0 && rechargeAt && now >= rechargeAt) {
@@ -348,14 +362,12 @@ const FreeKickGame = () => {
     ballRef.current = { x: b.x, y: b.y };
     setBall({ x: b.x, y: b.y });
     setResult("GOAL");
-    setScore((s) => {
-      const ns = s + 1;
-      setBest((bst) => {
-        const nb = Math.max(bst, ns);
-        localStorage.setItem("ffk_best", String(nb));
-        return nb;
-      });
-      return ns;
+    setScore((s) => s + 1);
+    // Every goal adds to the lifetime tournament total.
+    setTotal((t) => {
+      const nt = t + 1;
+      localStorage.setItem("ffk_total", String(nt));
+      return nt;
     });
     phaseRef.current = "scoring";
     setPhase("scoring");
@@ -671,7 +683,7 @@ const FreeKickGame = () => {
             Score <strong>{score}</strong>
           </span>
           <span>
-            Best <strong>{best}</strong>
+            Total <strong>{total}</strong>
           </span>
         </div>
       </div>
@@ -683,10 +695,6 @@ const FreeKickGame = () => {
           className="ffk-pitch"
           viewBox="0 0 100 130"
           preserveAspectRatio="xMidYMid meet"
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp}
         >
           <defs>
             <linearGradient id="ffk-grass" x1="0" y1="0" x2="0" y2="1">
@@ -969,6 +977,17 @@ const FreeKickGame = () => {
           </g>
         </svg>
 
+        {/* Shot zone — only this area around the ball captures the aim gesture,
+            so swiping anywhere else on the pitch scrolls the page normally
+            instead of wasting a shot. */}
+        <div
+          className="ffk-shotzone"
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+        />
+
         {/* Result banner */}
         {result && (
           <>
@@ -1055,7 +1074,7 @@ const FreeKickGame = () => {
           <span>Energy refills every hour.</span>
         ) : (
           <span>
-            Drag to aim, curve your drag to bend it 🌀. Hit the{" "}
+            Drag from the ball to aim, curve your drag to bend it 🌀. Hit the{" "}
             <strong style={{ color: "#22c55e" }}>green PWR</strong> sweet spot —
             too soft or too hard sends it off.{" "}
             <strong style={{ color: currentLegend.color }}>
@@ -1069,7 +1088,7 @@ const FreeKickGame = () => {
       <div className="ffk-compete">
         {isSignedIn ? (
           <span className="ffk-compete-status">
-            {synced ? "✓ Best saved to leaderboard" : "Scores count toward the leaderboard"}
+            {synced ? "✓ Goals added to your leaderboard XP" : "Every goal earns XP on the leaderboard"}
           </span>
         ) : (
           <Link to="/sign-in" className="ffk-compete-cta">

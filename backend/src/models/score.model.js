@@ -1,13 +1,14 @@
 const mongoose = require("mongoose");
 
-// One leaderboard entry per signed-in user. We keep only their personal best
-// for the Free Kick Challenge — the global ranking is derived from bestScore.
+// One leaderboard entry per signed-in user. We accumulate the total number of
+// goals scored across the whole tournament — the global ranking is derived
+// from totalScore (running total, not a single best run).
 const scoreSchema = new mongoose.Schema(
   {
     clerkUserId: { type: String, required: true, unique: true, index: true },
     username: { type: String, required: true },
     imageUrl: { type: String, default: "" },
-    bestScore: { type: Number, required: true, default: 0, min: 0 },
+    totalScore: { type: Number, required: true, default: 0, min: 0 },
   },
   { timestamps: true }
 );

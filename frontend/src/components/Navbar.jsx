@@ -7,9 +7,8 @@ const LINKS = [
   { to: "/", label: "Home", icon: "🏠", end: true },
   { to: "/get_all_posts", label: "Feed", icon: "📰" },
   { to: "/leaderboard", label: "Ranks", icon: "🏆" },
-  { to: "/predictions", label: "Predict", icon: "🔮", primary: true },
+  { to: "/predictions", label: "Predict", icon: "🔮" },
   { to: "/match-centre", label: "Live", icon: "📡" },
-  { to: "/create_a_post", label: "Post", icon: "➕" },
 ];
 
 const Navbar = () => {
@@ -37,7 +36,8 @@ const Navbar = () => {
   if (
     pathname === "/" ||
     pathname.startsWith("/sign-in") ||
-    pathname.startsWith("/sign-up")
+    pathname.startsWith("/sign-up") ||
+    pathname.startsWith("/complete-profile")
   ) {
     return null;
   }
@@ -53,17 +53,39 @@ const Navbar = () => {
             to={l.to}
             end={l.end}
             className={({ isActive }) =>
-              `nav-link ${l.primary ? "nav-link--predict" : ""} ${
-                isActive ? "nav-link--active" : ""
-              }`
+              `nav-link ${isActive ? "nav-link--active" : ""}`
             }
           >
             <span className="nav-icon" aria-hidden="true">
               {l.icon}
             </span>
-            <span>{l.label}</span>
+            <span className="nav-label">{l.label}</span>
           </NavLink>
         ))}
+
+        {/* Raised gradient FAB for creating a post */}
+        <NavLink
+          to="/create_a_post"
+          aria-label="Create a post"
+          className={({ isActive }) =>
+            `nav-fab ${isActive ? "nav-fab--active" : ""}`
+          }
+        >
+          <svg
+            className="nav-fab-plus"
+            viewBox="0 0 24 24"
+            fill="none"
+            aria-hidden="true"
+          >
+            <path
+              d="M12 5v14M5 12h14"
+              stroke="currentColor"
+              strokeWidth="2.6"
+              strokeLinecap="round"
+            />
+          </svg>
+          <span className="nav-fab-label">Post</span>
+        </NavLink>
 
         <div className="nav-auth">
           <AuthControls />

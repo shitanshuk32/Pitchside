@@ -9,6 +9,7 @@ import Bracket from "./pages/Bracket";
 import MatchCentre from "./pages/MatchCentre";
 import SignInPage from "./pages/SignInPage";
 import SignUpPage from "./pages/SignUpPage";
+import CompleteProfile from "./pages/CompleteProfile";
 import NotFound from "./pages/NotFound";
 import ProtectedRoute from "./components/ProtectedRoute";
 import Navbar from "./components/Navbar";
@@ -22,6 +23,7 @@ const App = () => {
         <Route path="/leaderboard" element={<Leaderboard />} />
         <Route path="/sign-in/*" element={<SignInPage />} />
         <Route path="/sign-up/*" element={<SignUpPage />} />
+        <Route path="/complete-profile" element={<CompleteProfile />} />
         <Route
           path="/create_a_post"
           element={

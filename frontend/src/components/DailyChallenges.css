@@ -96,6 +96,36 @@
   color: #6b7280;
 }
 
+.dc-howto {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 0 20px 16px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #fffbeb, #fef3c7);
+  border: 1px solid rgba(251, 191, 36, 0.45);
+}
+
+.dc-howto-ico {
+  font-size: 1.1rem;
+  line-height: 1.3;
+}
+
+.dc-howto p {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: #78350f;
+}
+
+.dc-howto a {
+  color: #b45309;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .dc-progress {
   padding: 0 20px 16px;
   margin-bottom: 0;
@@ -199,6 +229,27 @@
   font-size: 0.88rem;
   font-weight: 700;
   color: #111827;
+}
+
+/* Ongoing (non-checkbox) goals row */
+.dc-item--ongoing {
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.06), rgba(252, 176, 69, 0.08));
+  border-color: rgba(124, 58, 237, 0.2);
+}
+.dc-check--ongoing {
+  background: linear-gradient(135deg, #7c3aed, #a855f7);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3);
+}
+.dc-item--ongoing .dc-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.dc-sub {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #9ca3af;
 }
 
 .dc-item--done .dc-label {

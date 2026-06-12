@@ -18,8 +18,15 @@ const ProtectedRoute = ({ children }) => {
   }
 
   if (!isSignedIn) {
+    // Remember where they were headed (in the URL so it survives a refresh, and
+    // in state as a backup) so the auth screen can return them there on success.
+    const from = location.pathname + location.search;
     return (
-      <Navigate to="/sign-in" replace state={{ from: location.pathname }} />
+      <Navigate
+        to={`/sign-in?redirect_url=${encodeURIComponent(from)}`}
+        replace
+        state={{ from }}
+      />
     );
   }
 

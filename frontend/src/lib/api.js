@@ -36,8 +36,10 @@ export const api = {
     request(`/posts/${id}/comment`, { method: "POST", body: { text }, token }),
   getLeaderboard: (token) =>
     request("/leaderboard", token ? { token } : {}),
-  submitScore: (score, token) =>
-    request("/leaderboard/score", { method: "POST", body: { score }, token }),
+  // Adds newly-scored goals to the player's tournament total (each goal also
+  // contributes XP toward the unified leaderboard ranking).
+  addGoals: (goals, token) =>
+    request("/leaderboard/score", { method: "POST", body: { goals }, token }),
   getEngagementToday: (token) =>
     request("/engagement/today", token ? { token } : {}),
   recordEngagementActivity: (type, token) =>
