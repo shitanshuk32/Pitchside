@@ -259,8 +259,12 @@ const PostCard = ({ post, isSignedIn, getToken, index = 0, onDeleted }) => {
     setDeleteError("");
     try {
       const token = await getToken();
-      await api.deletePost(post._id, token);
+      const res = await api.deletePost(post._id, token);
       onDeleted?.(post._id);
+      // If deleting this post took XP back, refresh the daily challenges / XP UI.
+      if (res?.revokedXp) {
+        window.dispatchEvent(new CustomEvent("pitchside:engagement"));
+      }
     } catch (err) {
       setDeleting(false);
       setDeleteError(err.message || "Could not delete");
@@ -437,6 +441,13 @@ const PostCard = ({ post, isSignedIn, getToken, index = 0, onDeleted }) => {
                       Delete this {isText ? "chant" : "post"}? This can&apos;t be
                       undone.
                     </p>
+                    {post.earnedXp > 0 && (
+                      <p className="mb-2 rounded-lg bg-brand-red/8 px-2 py-1.5 text-xs font-semibold leading-relaxed text-brand-red">
+                        Heads up: this {isText ? "chant" : "post"} earned you{" "}
+                        {post.earnedXp} XP. Deleting it removes those {post.earnedXp}{" "}
+                        XP — your other posts and XP stay safe.
+                      </p>
+                    )}
                     <div className="flex gap-2">
                       <button
                         type="button"

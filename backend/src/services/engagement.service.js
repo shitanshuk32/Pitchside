@@ -243,9 +243,45 @@ const recordActivity = async (userId, challengeId, getProfile = null) => {
   }
 };
 
+// Reverse a single challenge award when its qualifying post is deleted. Only
+// the exact XP that post earned is removed (clamped at 0) — every other post,
+// prediction or activity the user did stays untouched. If the award happened
+// today, the quest is marked incomplete again so they can re-earn it by posting.
+const revokeChallengeXpOnce = async (userId, challengeId, xp, dateKey) => {
+  const eng = await engagementModel.findOne({ clerkUserId: userId });
+  if (!eng) return { ok: false, reason: "no_engagement" };
+
+  const amount = Number(xp) || 0;
+  eng.totalXp = Math.max(0, (eng.totalXp || 0) - amount);
+
+  const today = getTodayKey();
+  if (dateKey === today && Array.isArray(eng.todayCompleted)) {
+    eng.todayCompleted = eng.todayCompleted.filter((id) => id !== challengeId);
+  }
+
+  await eng.save();
+  return {
+    ok: true,
+    removedXp: amount,
+    payload: shapeEngagementResponse(eng, today),
+  };
+};
+
+const revokeChallengeXp = async (userId, challengeId, xp, dateKey) => {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await revokeChallengeXpOnce(userId, challengeId, xp, dateKey);
+    } catch (err) {
+      if (isRetryableRaceError(err) && attempt < 3) continue;
+      throw err;
+    }
+  }
+};
+
 module.exports = {
   CHALLENGE_POOL,
   getEngagementToday,
   recordActivity,
+  revokeChallengeXp,
   getTournamentInfo,
 };

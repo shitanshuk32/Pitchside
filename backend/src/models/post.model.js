@@ -22,6 +22,19 @@ const reactionSchema = new mongoose.Schema(
   { _id: false }
 );
 
+// Records the daily-challenge XP this specific post earned. Only set on the one
+// post that actually triggered the award (a repeat post the same day earns
+// nothing, so it carries no award). Used to warn the author before delete and
+// to revoke exactly this XP — never the rest of their day's XP.
+const xpAwardSchema = new mongoose.Schema(
+  {
+    challengeId: { type: String, required: true },
+    xp: { type: Number, required: true },
+    dateKey: { type: String, required: true }, // YYYY-MM-DD (UTC) the XP was credited
+  },
+  { _id: false }
+);
+
 // A feed post. `author` is the signed-in creator, `reactions` holds one emoji
 // per user, `likes` is the legacy heart-only field (kept for back-compat and
 // folded into ❤️ reactions on read), and `comments` is an embedded list.
@@ -39,6 +52,7 @@ const postSchema = new mongoose.Schema(
     likes: { type: [String], default: [] },
     reactions: { type: [reactionSchema], default: [] },
     comments: { type: [commentSchema], default: [] },
+    xpAward: { type: xpAwardSchema, default: null },
   },
   { timestamps: true }
 );

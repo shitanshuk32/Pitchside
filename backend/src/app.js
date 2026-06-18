@@ -16,7 +16,11 @@ const matchModel = require("./models/match.model");
 const {
   getEngagementToday,
   recordActivity,
+  revokeChallengeXp,
 } = require("./services/engagement.service");
+
+// UTC day key (YYYY-MM-DD) used to stamp which day a post's XP was credited.
+const getDateKey = () => new Date().toISOString().slice(0, 10);
 const {
   getMatchesToday,
   getLiveAndToday,
@@ -43,7 +47,7 @@ app.use(
 );
 app.use(express.json());
 // Attaches auth context (req.auth) to every request when a session is present.
-app.use(clerkMiddleware());
+app.use(clerkMiddleware({ telemetry: { disabled: true } }));
 
 // Route guard for endpoints that require a signed-in user. Replaces Clerk's
 // deprecated requireAuth() — same behaviour (401 when there's no session),
@@ -120,6 +124,9 @@ const shapePost = (post, viewerId) => ({
   author: post.author?.clerkUserId ? post.author : null,
   isOwner: !!viewerId && post.author?.clerkUserId === viewerId,
   createdAt: post.createdAt,
+  // XP this post earned (0 for repeat posts that earned nothing). Lets the owner
+  // be warned before deleting the one post that's holding their challenge XP.
+  earnedXp: post.xpAward?.xp || 0,
   ...summarizeReactions(post, viewerId),
   commentCount: (post.comments || []).length,
   comments: (post.comments || []).map((c) => ({
@@ -152,7 +159,19 @@ app.post(
         author: { clerkUserId: userId, ...author },
       });
 
-      await recordActivity(userId, "create_post", () => Promise.resolve(author));
+      const award = await recordActivity(userId, "create_post", () =>
+        Promise.resolve(author)
+      );
+      // Only the post that actually earned the XP carries the award, so deleting
+      // a repeat post the same day never costs the user any XP.
+      if (award?.ok && !award.alreadyDone && !award.skipped && award.newXp) {
+        post.xpAward = {
+          challengeId: "create_post",
+          xp: award.newXp,
+          dateKey: getDateKey(),
+        };
+        await post.save();
+      }
 
       return res.status(201).json({
         message: "Post created successfully...",
@@ -185,7 +204,17 @@ app.post("/create_a_text_post", requireUser, async (req, res) => {
       author: { clerkUserId: userId, ...author },
     });
 
-    await recordActivity(userId, "post_chant", () => Promise.resolve(author));
+    const award = await recordActivity(userId, "post_chant", () =>
+      Promise.resolve(author)
+    );
+    if (award?.ok && !award.alreadyDone && !award.skipped && award.newXp) {
+      post.xpAward = {
+        challengeId: "post_chant",
+        xp: award.newXp,
+        dateKey: getDateKey(),
+      };
+      await post.save();
+    }
 
     return res.status(201).json({
       message: "Chant posted successfully...",
@@ -219,8 +248,28 @@ app.delete("/posts/:id", requireUser, async (req, res) => {
         .json({ message: "You can only delete your own post" });
     }
 
+    const award = post.xpAward;
     await post.deleteOne();
-    return res.status(200).json({ message: "Post deleted" });
+
+    // If this exact post earned challenge XP, take just that XP back — nothing
+    // else the user earned today or since is affected.
+    let revokedXp = 0;
+    if (award?.xp) {
+      try {
+        const result = await revokeChallengeXp(
+          userId,
+          award.challengeId,
+          award.xp,
+          award.dateKey
+        );
+        if (result?.ok) revokedXp = result.removedXp;
+      } catch (revokeErr) {
+        // Non-fatal: the post is already gone; XP can self-correct on next earn.
+        console.log("Error revoking post XP", revokeErr);
+      }
+    }
+
+    return res.status(200).json({ message: "Post deleted", revokedXp });
   } catch (err) {
     console.log("Error deleting post", err);
     return res.status(500).json({ message: "Could not delete post" });
