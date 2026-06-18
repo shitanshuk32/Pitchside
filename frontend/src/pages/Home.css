@@ -994,18 +994,31 @@
   margin-bottom: 24px;
 }
 .home-today-card {
+  position: relative;
   flex-direction: column;
   align-items: stretch;
-  padding: 16px 18px;
+  padding: 18px 18px 16px;
   border-radius: 20px;
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
-  box-shadow: 0 6px 20px rgba(17, 24, 39, 0.06);
+  background: linear-gradient(160deg, #ffffff 0%, #faf6ff 100%);
+  border: 1px solid #ece6f6;
+  box-shadow: 0 8px 24px rgba(76, 29, 149, 0.08);
+  overflow: hidden;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+/* Colourful accent strip so the card isn't a flat white box */
+.home-today-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 4px;
+  background: linear-gradient(90deg, #7c3aed, #a855f7, #fcb045);
 }
 .home-today-card:hover {
   transform: translateY(-3px);
-  box-shadow: 0 14px 32px rgba(124, 58, 237, 0.12);
+  box-shadow: 0 16px 36px rgba(124, 58, 237, 0.18);
+}
+.home-today-card--live::before {
+  background: linear-gradient(90deg, #16a34a, #22c55e, #4ade80);
 }
 .home-today-card--live {
   border-color: rgba(34, 197, 94, 0.35);
@@ -1022,47 +1035,86 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
 }
-.home-match-flag {
-  font-size: 2rem;
-  line-height: 1;
-  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.12));
-}
+.home-match-flag,
 .home-match-flag-fallback {
   display: grid;
   place-items: center;
-  width: 40px;
-  height: 40px;
+  width: 46px;
+  height: 46px;
   border-radius: 50%;
-  background: rgba(124, 58, 237, 0.1);
-  font-size: 0.75rem;
+  background: linear-gradient(160deg, #f5f0ff, #ebe3fb);
+  border: 2px solid #ffffff;
+  box-shadow: 0 5px 14px rgba(76, 29, 149, 0.16);
+}
+.home-match-flag {
+  font-size: 1.7rem;
+  line-height: 1;
+}
+.home-match-flag-fallback {
+  font-size: 0.8rem;
   font-weight: 800;
   color: #7c3aed;
+}
+.home-today-team {
+  font-size: 0.86rem;
+  font-weight: 800;
+  color: #1f2937;
+  text-align: center;
 }
 .home-today-center {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
 }
 .home-today-score {
-  font-size: 1.5rem;
-  font-weight: 800;
+  font-size: 1.7rem;
+  font-weight: 900;
   color: #111827;
+  letter-spacing: -0.01em;
+}
+.home-today-score--live {
+  color: #16a34a;
 }
 .home-today-vs {
-  font-size: 0.82rem;
+  font-size: 0.72rem;
   font-weight: 800;
-  letter-spacing: 0.1em;
-  color: #6b7280;
+  letter-spacing: 0.16em;
+  color: #b59ce8;
 }
-.home-today-countdown {
-  font-size: 0.68rem;
+/* Prominent time pill — the emphasis the matchday card was missing */
+.home-today-time {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #7c3aed, #a855f7);
+  box-shadow: 0 6px 16px rgba(124, 58, 237, 0.32);
+}
+.home-today-time-clock {
+  font-size: 1rem;
+  font-weight: 900;
+  color: #ffffff;
+  line-height: 1.05;
+}
+.home-today-time-count {
+  font-size: 0.6rem;
   font-weight: 700;
-  color: #7c3aed;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.9);
   white-space: nowrap;
+}
+.home-today-ft {
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9ca3af;
 }
 .home-today-link {
   color: #7c3aed;

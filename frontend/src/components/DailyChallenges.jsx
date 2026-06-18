@@ -64,6 +64,11 @@ const DailyChallenges = () => {
       ? Math.round((data.dailyXp / data.dailyXpMax) * 100)
       : 0;
 
+  // Onboarding copy (the spotlight + how-it-works boxes) is only useful to
+  // newcomers: signed-out visitors and brand-new players who haven't earned
+  // any XP yet. Returning players already know the drill, so we hide it.
+  const showIntro = !isSignedIn || (data.totalXp || 0) === 0;
+
   return (
     <section className="daily-challenges" id="daily-challenges">
       <div className="dc-header">
@@ -83,25 +88,30 @@ const DailyChallenges = () => {
         </div>
       </div>
 
-      <div className="dc-spotlight">
-        <span className="dc-spotlight-emoji" aria-hidden="true">
-          {spotlight.emoji}
-        </span>
-        <div>
-          <strong>{spotlight.title}</strong>
-          <p>{spotlight.hook}</p>
-        </div>
-      </div>
+      {showIntro && (
+        <>
+          <div className="dc-spotlight">
+            <span className="dc-spotlight-emoji" aria-hidden="true">
+              {spotlight.emoji}
+            </span>
+            <div>
+              <strong>{spotlight.title}</strong>
+              <p>{spotlight.hook}</p>
+            </div>
+          </div>
 
-      <div className="dc-howto">
-        <span className="dc-howto-ico" aria-hidden="true">🏆</span>
-        <p>
-          Score <a href="#free-kick">goals</a> (they stack up all tournament) and
-          complete the quests below to earn <strong>XP</strong>. The more you
-          stack, the higher you climb the{" "}
-          <Link to="/leaderboard">leaderboard</Link> — top 3 win a jersey.
-        </p>
-      </div>
+          <div className="dc-howto">
+            <span className="dc-howto-ico" aria-hidden="true">🏆</span>
+            <p>
+              Score <a href="#free-kick">goals</a> (they stack up all tournament)
+              and complete the quests below to earn <strong>XP</strong>. The more
+              you stack, the higher you climb the{" "}
+              <Link to="/leaderboard">leaderboard</Link> — top{" "}
+              <span className="strike-one">3</span> 1 wins a jersey.
+            </p>
+          </div>
+        </>
+      )}
 
       <div className="dc-progress">
         <div className="dc-progress-meta">

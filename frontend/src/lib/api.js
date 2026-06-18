@@ -28,6 +28,8 @@ export const api = {
     request("/create_a_post", { method: "POST", body: formData, token }),
   createTextPost: (text, token) =>
     request("/create_a_text_post", { method: "POST", body: { text }, token }),
+  deletePost: (id, token) =>
+    request(`/posts/${id}`, { method: "DELETE", token }),
   toggleLike: (id, token) =>
     request(`/posts/${id}/like`, { method: "POST", token }),
   reactToPost: (id, emoji, token) =>
@@ -60,12 +62,22 @@ export const api = {
   // Predictions
   submitPrediction: (matchId, pick, token) =>
     request(`/predictions/${matchId}`, { method: "POST", body: { pick }, token }),
+  removePrediction: (matchId, token) =>
+    request(`/predictions/${matchId}`, { method: "DELETE", token }),
   getMyPredictions: (token) => request("/predictions/me", { token }),
+  backfillResults: (token) =>
+    request("/matches/backfill", { method: "POST", token }),
 
   // Bracket
   saveBracket: (picks, token) =>
     request("/bracket", { method: "POST", body: { picks }, token }),
   getMyBracket: (token) => request("/bracket/me", { token }),
+
+  // Energy refill reminder emails (Free Kick game)
+  scheduleEnergyReminder: (refillAt, token) =>
+    request("/energy/reminder", { method: "POST", body: { refillAt }, token }),
+  cancelEnergyReminder: (token) =>
+    request("/energy/reminder", { method: "DELETE", token }),
 };
 
 export { API_URL };

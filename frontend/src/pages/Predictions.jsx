@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@clerk/react";
 import { api } from "../lib/api";
+import { flagFor } from "../lib/flags";
 import "./Predictions.css";
 
 const fmt = (utcDate) => {
@@ -84,11 +85,25 @@ const CommunityMeter = ({ community, match }) => {
   );
 };
 
-const MatchCard = ({ match, onPick, submitting }) => {
+const MatchCard = ({ match, onPick }) => {
   const isLive = STATUS_LIVE.has(match.status);
   const isDone = STATUS_DONE.has(match.status);
   const canPick = match.canPick;
-  const myPick = match.myPick;
+
+  // Optimistic local pick so the button highlights instantly on tap instead of
+  // waiting for the network round-trip. Re-syncs whenever the server value
+  // changes (e.g. after a refresh).
+  const [myPick, setMyPick] = useState(match.myPick ?? null);
+  useEffect(() => {
+    setMyPick(match.myPick ?? null);
+  }, [match.myPick]);
+
+  const handlePick = (id) => {
+    // Tapping the active pick clears it (undo); otherwise switch to it.
+    const next = myPick === id ? null : id;
+    setMyPick(next);
+    onPick(match.matchId, next);
+  };
 
   const picks = [
     { id: "home", label: match.homeTeam?.shortName || match.homeTeam?.name },
@@ -175,8 +190,9 @@ const MatchCard = ({ match, onPick, submitting }) => {
               return (
                 <button
                   key={p.id}
-                  onClick={() => onPick(match.matchId, p.id)}
-                  disabled={submitting}
+                  type="button"
+                  onClick={() => handlePick(p.id)}
+                  aria-pressed={active}
                   className={`pred-pick ${active ? "pred-pick--active" : ""}`}
                 >
                   {p.label}
@@ -215,30 +231,92 @@ const MatchCard = ({ match, onPick, submitting }) => {
 };
 
 const RecordRow = ({ item }) => {
-  const mark =
-    item.correct === true
-      ? { cls: "pred-hmark--ok", ch: "✓" }
-      : item.correct === false
-        ? { cls: "pred-hmark--no", ch: "✗" }
-        : { cls: "pred-hmark--pend", ch: "–" };
+  const homeShort = item.homeTeam;
+  const awayShort = item.awayTeam;
+  const homeFlag = flagFor(item.homeName || homeShort);
+  const awayFlag = flagFor(item.awayName || awayShort);
+
+  const hasScore =
+    item.score?.home !== null &&
+    item.score?.home !== undefined &&
+    item.score?.away !== null &&
+    item.score?.away !== undefined;
+
+  // participated defaults to true so older payloads without the flag still work.
+  const participated = item.participated !== false;
+  const won = item.correct === true;
+  const lost = item.correct === false;
+  const kickoff = item.utcDate ? new Date(item.utcDate).getTime() : 0;
+  const isPast = kickoff > 0 && kickoff < Date.now();
+  // No pick? It's a match the user skipped. Otherwise: graded → won/lost,
+  // a played/past match is awaiting its result, a future match is upcoming.
+  const status = !participated
+    ? "missed"
+    : won
+      ? "won"
+      : lost
+        ? "lost"
+        : hasScore || isPast
+          ? "pending"
+          : "upcoming";
+
+  const pickLabel =
+    item.pick === "home"
+      ? homeShort
+      : item.pick === "away"
+        ? awayShort
+        : item.pick === "draw"
+          ? "Draw"
+          : "—";
+
+  const badgeText = !participated
+    ? "DID NOT PLAY"
+    : won
+      ? `WON · +${item.xpAwarded || 15} XP`
+      : lost
+        ? "LOST"
+        : status === "pending"
+          ? "AWAITING"
+          : "UPCOMING";
 
   return (
-    <li className="pred-hrow">
-      <span className={`pred-hmark ${mark.cls}`}>{mark.ch}</span>
-      <div className="pred-hmeta">
-        <p className="pred-hmeta-teams">
-          {item.homeTeam} vs {item.awayTeam}
-        </p>
-        <p className="pred-hmeta-sub">
-          {fmtDate(item.utcDate)} · Pick: <span className="cap">{item.pick}</span>
-          {item.score?.home !== null &&
-            item.score?.home !== undefined &&
-            ` · ${item.score.home}–${item.score.away}`}
-        </p>
+    <li className={`pred-hcard pred-hcard--${status}`}>
+      <div className="pred-hcard-top">
+        <div className="pred-hteam">
+          <span className="pred-hflag">{homeFlag || "🏳️"}</span>
+          <span className="pred-hteam-name">{homeShort}</span>
+        </div>
+        <div className="pred-hscore">
+          {hasScore ? (
+            <span className="pred-hscore-num">
+              {item.score.home}
+              <i>–</i>
+              {item.score.away}
+            </span>
+          ) : (
+            <span className="pred-hscore-vs">VS</span>
+          )}
+        </div>
+        <div className="pred-hteam pred-hteam--right">
+          <span className="pred-hteam-name">{awayShort}</span>
+          <span className="pred-hflag">{awayFlag || "🏳️"}</span>
+        </div>
       </div>
-      {item.xpAwarded > 0 && (
-        <span className="pred-hxp">+{item.xpAwarded} XP</span>
-      )}
+      <div className="pred-hcard-bottom">
+        <span className="pred-hdate">{fmtDate(item.utcDate)}</span>
+        {participated ? (
+          <span className="pred-hpick">
+            {won && <span className="pred-hpick-ico">✓</span>}
+            {lost && <span className="pred-hpick-ico pred-hpick-ico--no">✗</span>}
+            Your pick: <strong>{pickLabel}</strong>
+          </span>
+        ) : (
+          <span className="pred-hpick pred-hpick--none">
+            You didn&apos;t predict this match
+          </span>
+        )}
+        <span className={`pred-hbadge pred-hbadge--${status}`}>{badgeText}</span>
+      </div>
     </li>
   );
 };
@@ -250,8 +328,10 @@ const Predictions = () => {
   const [record, setRecord] = useState(null);
   const [stats, setStats] = useState(null);
   const [rank, setRank] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
+  const [matchesError, setMatchesError] = useState(false);
+  const [recordError, setRecordError] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [toast, setToast] = useState(null);
 
   const showToast = (msg, ok = true) => {
@@ -264,10 +344,21 @@ const Predictions = () => {
       const token = isSignedIn ? await getToken() : null;
       const data = await api.getMatchesToday(token);
       setMatches(data.matches || []);
+      setMatchesError(false);
     } catch {
-      setMatches([]);
+      // A failed request is NOT the same as an empty matchday — keep matches
+      // unset and flag the error so we can show a retry instead of the
+      // misleading "No matches today" empty state.
+      setMatches(null);
+      setMatchesError(true);
     }
   }, [isSignedIn, getToken]);
+
+  const retryToday = useCallback(async () => {
+    setRetrying(true);
+    await loadToday();
+    setRetrying(false);
+  }, [loadToday]);
 
   const loadRecord = useCallback(async () => {
     if (!isSignedIn) return;
@@ -275,8 +366,10 @@ const Predictions = () => {
       const token = await getToken();
       const data = await api.getMyPredictions(token);
       setRecord(data);
+      setRecordError(false);
     } catch {
       setRecord(null);
+      setRecordError(true);
     }
   }, [isSignedIn, getToken]);
 
@@ -302,11 +395,36 @@ const Predictions = () => {
     }
   }, [isSignedIn, getToken]);
 
+  // Pull final scores for finished matches from the API, then refresh the
+  // record so newly graded picks (WON/LOST) and XP show up immediately.
+  const refreshResults = useCallback(async () => {
+    if (!isSignedIn || refreshing) return;
+    setRefreshing(true);
+    try {
+      const token = await getToken();
+      const data = await api.backfillResults(token);
+      await Promise.all([loadRecord(), loadStats(), loadRank()]);
+      window.dispatchEvent(new CustomEvent("pitchside:engagement"));
+      showToast(
+        data?.fetched > 0
+          ? `Updated ${data.fetched} match${data.fetched === 1 ? "" : "es"}`
+          : "Results are up to date"
+      );
+    } catch (err) {
+      showToast(err.message || "Could not refresh results", false);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [isSignedIn, refreshing, getToken, loadRecord, loadStats, loadRank]);
+
   useEffect(() => {
     if (!isLoaded) return;
-    Promise.all([loadToday(), loadRecord(), loadStats(), loadRank()]).finally(
-      () => setLoading(false)
-    );
+    // Fire each load independently so the main Today list renders as soon as
+    // matches arrive, instead of waiting for the slowest of all four calls.
+    loadToday();
+    loadRecord();
+    loadStats();
+    loadRank();
   }, [isLoaded, loadToday, loadRecord, loadStats, loadRank]);
 
   const onPick = async (matchId, pick) => {
@@ -314,18 +432,22 @@ const Predictions = () => {
       showToast("Sign in to save your prediction", false);
       return;
     }
-    setSubmitting(true);
     try {
       const token = await getToken();
-      await api.submitPrediction(matchId, pick, token);
-      showToast("Pick saved!");
+      // pick === null means "undo" — remove the existing prediction.
+      if (pick === null) {
+        await api.removePrediction(matchId, token);
+      } else {
+        await api.submitPrediction(matchId, pick, token);
+      }
+      // The button already updated optimistically; refresh community %, stats
+      // and challenges in the background.
       await loadToday();
       await loadStats();
       window.dispatchEvent(new CustomEvent("pitchside:engagement"));
     } catch (err) {
       showToast(err.message || "Could not save pick", false);
-    } finally {
-      setSubmitting(false);
+      loadToday(); // revert the optimistic state to the server's truth
     }
   };
 
@@ -339,6 +461,11 @@ const Predictions = () => {
     record && record.total > 0
       ? Math.round((record.correct / record.total) * 100)
       : null;
+
+  // Per-tab loading: the Today list only depends on `matches`, so it no longer
+  // waits on the record / stats / rank requests.
+  const todayLoading = matches === null && !matchesError;
+  const recordLoading = isSignedIn && record === null && !recordError;
 
   return (
     <div className="pred-screen">
@@ -423,7 +550,7 @@ const Predictions = () => {
           ))}
         </div>
 
-        {loading && (
+        {tab === "today" && todayLoading && (
           <div className="pred-list">
             {[1, 2].map((i) => (
               <div key={i} className="pred-skel" />
@@ -431,17 +558,29 @@ const Predictions = () => {
           </div>
         )}
 
-        {!loading && tab === "today" && (
+        {tab === "today" && !todayLoading && (
           <>
-            {matches && matches.length > 0 ? (
+            {matchesError ? (
+              <div className="pred-empty">
+                <p className="pred-empty-emoji">⚠️</p>
+                <p className="pred-empty-title">Couldn't load matches</p>
+                <p className="pred-empty-sub">
+                  Something went wrong reaching the server. Check your connection
+                  and try again.
+                </p>
+                <button
+                  type="button"
+                  className="pred-cta"
+                  onClick={retryToday}
+                  disabled={retrying}
+                >
+                  {retrying ? "Retrying…" : "Retry"}
+                </button>
+              </div>
+            ) : matches && matches.length > 0 ? (
               <div className="pred-list">
                 {matches.map((m) => (
-                  <MatchCard
-                    key={m.matchId}
-                    match={m}
-                    onPick={onPick}
-                    submitting={submitting}
-                  />
+                  <MatchCard key={m.matchId} match={m} onPick={onPick} />
                 ))}
               </div>
             ) : (
@@ -462,7 +601,7 @@ const Predictions = () => {
           </>
         )}
 
-        {!loading && tab === "record" && (
+        {tab === "record" && (
           <>
             {!isSignedIn ? (
               <div className="pred-empty">
@@ -472,12 +611,36 @@ const Predictions = () => {
                   Sign in
                 </Link>
               </div>
+            ) : recordLoading ? (
+              <div className="pred-list">
+                {[1, 2].map((i) => (
+                  <div key={i} className="pred-skel" />
+                ))}
+              </div>
             ) : record ? (
               <>
+                <div className="pred-record-head">
+                  <h2 className="pred-record-title">Your record</h2>
+                  <button
+                    type="button"
+                    className="pred-refresh"
+                    onClick={refreshResults}
+                    disabled={refreshing}
+                    aria-busy={refreshing}
+                  >
+                    <span
+                      className={`pred-refresh-ico ${refreshing ? "pred-refresh-ico--spin" : ""}`}
+                      aria-hidden="true"
+                    >
+                      ↻
+                    </span>
+                    {refreshing ? "Refreshing…" : "Refresh results"}
+                  </button>
+                </div>
                 <div className="pred-record-stats">
                   {[
                     { label: "Correct", value: record.correct },
-                    { label: "Total", value: record.total },
+                    { label: "Predicted", value: record.total },
                     { label: "XP earned", value: record.totalXp },
                   ].map(({ label, value }) => (
                     <div key={label} className="pred-rcard">

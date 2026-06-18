@@ -8,8 +8,7 @@
 //The cloud service platform will take the buffer, turn those bytes into actual data and will host it and will sent he public url in return.
 const ImageKit = require("@imagekit/nodejs");
 
-const privateKey =
-  process.env.IMAGEKIT_PRIVATE_KEY || process.env.IMAGE_KIT_PRIVATE_KEY;
+const privateKey = process.env.IMAGEKIT_PRIVATE_KEY;
 
 const client = new ImageKit({ privateKey });
 

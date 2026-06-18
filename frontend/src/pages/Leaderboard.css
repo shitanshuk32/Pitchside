@@ -85,11 +85,11 @@
 /* Podium */
 .lb-podium {
   display: grid;
-  grid-template-columns: 1fr 1.15fr 1fr;
+  grid-template-columns: 0.95fr 1.3fr 0.85fr;
   gap: 8px;
   align-items: end;
   margin-bottom: 20px;
-  min-height: 160px;
+  min-height: 210px;
 }
 .lb-pod {
   display: flex;
@@ -103,26 +103,44 @@
 @keyframes lbRise {
   from { opacity: 0; transform: translateY(20px); }
 }
+/* 1st place — largest box, avatar, medal and score */
 .lb-pod--1 {
   order: 2;
-  min-height: 148px;
+  min-height: 200px;
+  padding: 20px 10px 18px;
   background: linear-gradient(180deg, #fef3c7, #fde68a);
   border: 2px solid var(--gold);
-  box-shadow: 0 12px 32px rgba(251, 191, 36, 0.35);
+  box-shadow: 0 14px 36px rgba(251, 191, 36, 0.4);
 }
+/* 2nd place — medium */
 .lb-pod--2 {
   order: 1;
-  min-height: 118px;
+  min-height: 152px;
+  padding: 14px 8px 14px;
   background: linear-gradient(180deg, #f3f4f6, #e5e7eb);
   border: 2px solid #d1d5db;
 }
+/* 3rd place — smallest */
 .lb-pod--3 {
   order: 3;
-  min-height: 100px;
+  min-height: 124px;
+  padding: 11px 6px 12px;
   background: linear-gradient(180deg, #fed7aa, #fdba74);
   border: 2px solid #fb923c;
 }
+
+/* Per-place avatar sizing (overrides the global 36px list avatar) */
+.lb-pod--1 .lb-avatar,
+.lb-pod--1 .lb-avatar-fallback { width: 62px; height: 62px; font-size: 1.5rem; }
+.lb-pod--2 .lb-avatar,
+.lb-pod--2 .lb-avatar-fallback { width: 46px; height: 46px; font-size: 1.1rem; }
+.lb-pod--3 .lb-avatar,
+.lb-pod--3 .lb-avatar-fallback { width: 38px; height: 38px; font-size: 0.9rem; }
+
 .lb-pod-medal { font-size: 1.6rem; line-height: 1; }
+.lb-pod--1 .lb-pod-medal { font-size: 2.3rem; }
+.lb-pod--3 .lb-pod-medal { font-size: 1.4rem; }
+
 .lb-pod-name {
   margin-top: 6px;
   font-size: 0.72rem;
@@ -133,11 +151,17 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.lb-pod--1 .lb-pod-name { font-size: 0.86rem; margin-top: 8px; }
+.lb-pod--3 .lb-pod-name { font-size: 0.68rem; }
+
 .lb-pod-score {
   font-size: 1.1rem;
   font-weight: 800;
   color: var(--p);
 }
+.lb-pod--1 .lb-pod-score { font-size: 1.55rem; }
+.lb-pod--3 .lb-pod-score { font-size: 1rem; }
+
 .lb-pod-lbl { font-size: 0.58rem; font-weight: 700; color: var(--t2); text-transform: uppercase; }
 
 /* Me card */

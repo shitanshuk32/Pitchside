@@ -119,8 +119,9 @@ const Leaderboard = () => {
           <span className="lb-badge">🏆 Global Ranking</span>
           <h1 className="lb-title">Leaderboard</h1>
           <p className="lb-sub">
-            Earn XP from goals, predictions &amp; daily challenges. Top 3 at the
-            end of the World Cup win a free custom jersey.
+            Earn XP from goals, predictions &amp; daily challenges. Top{" "}
+            <span className="strike-one">3</span> 1 at the end of the World Cup
+            wins a free custom jersey.
           </p>
         </header>
 
@@ -131,8 +132,10 @@ const Leaderboard = () => {
               Jersey prize
             </p>
             <p style={{ margin: "4px 0 0", fontSize: "0.88rem", color: "#374151" }}>
-              <strong>Top 3 players</strong> take home a free custom jersey.
-              Winner announced Jul 19, 2026.
+              <strong>
+                Top <span className="strike-one">3</span> 1 player
+              </strong>{" "}
+              takes home a free custom jersey. Winner announced Jul 19, 2026.
             </p>
           </div>
         </div>

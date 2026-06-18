@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api } from "../lib/api";
 import { getTeamFacts } from "../data/teamFacts";
 import { WORLD_CUP_FACTS } from "./facts";
+import { buildLiveFacts } from "../lib/matchFacts";
 import "./MatchCentre.css";
 
 const LIVE_STATUSES = new Set(["IN_PLAY", "PAUSED", "HALF_TIME"]);
@@ -423,6 +424,30 @@ const GroupsTab = ({ standings }) => {
 // Presentational category heuristic (does not alter the underlying facts).
 const FACT_CATS = [
   {
+    test: (f) => /^🔴 LIVE/i.test(f),
+    label: "Live now",
+    emoji: "🔴",
+    accent: "#EF4444",
+  },
+  {
+    test: (f) => /^⚽ .*scored/i.test(f),
+    label: "Goal",
+    emoji: "⚽",
+    accent: "#16A34A",
+  },
+  {
+    test: (f) => /^✅|^🤝/.test(f),
+    label: "Result",
+    emoji: "🏁",
+    accent: "#0EA5E9",
+  },
+  {
+    test: (f) => /^🥇|top .*group|sharpest attack/i.test(f),
+    label: "Standings",
+    emoji: "📊",
+    accent: "#F59E0B",
+  },
+  {
     test: (f) => /co-host|host|cities|hosts/i.test(f),
     label: "Host Nations",
     emoji: "🌎",
@@ -465,49 +490,59 @@ const FactCard = ({ item }) => {
   );
 };
 
-const FactsTab = ({ matches }) => {
-  const allFacts = [];
+const FactsTab = ({ matches, standings }) => {
+  // Lead with real-time facts: live scores, results, goalscorers and group
+  // leaders pulled straight from the tournament data.
+  const live = buildLiveFacts(matches, standings);
+  const isLive = live.length > 0;
 
-  if (matches && matches.length > 0) {
-    for (const m of matches.slice(0, 3)) {
-      const homeName = m.homeTeam?.name;
-      const awayName = m.awayTeam?.name;
-      if (homeName) {
-        const facts = getTeamFacts(homeName);
-        if (facts?.[0]) {
-          allFacts.push({
-            fact: facts[0],
-            emoji: "🔵",
-            tag: `${m.homeTeam?.shortName || homeName}`,
-            flag: m.homeTeam?.flag,
-          });
+  let combined;
+  if (isLive) {
+    combined = live.map((f) => ({ fact: f }));
+  } else {
+    // Pre-tournament / no data yet — fall back to team & general WC facts.
+    const allFacts = [];
+    if (matches && matches.length > 0) {
+      for (const m of matches.slice(0, 3)) {
+        const homeName = m.homeTeam?.name;
+        const awayName = m.awayTeam?.name;
+        if (homeName) {
+          const facts = getTeamFacts(homeName);
+          if (facts?.[0]) {
+            allFacts.push({
+              fact: facts[0],
+              emoji: "🔵",
+              tag: `${m.homeTeam?.shortName || homeName}`,
+              flag: m.homeTeam?.flag,
+            });
+          }
         }
-      }
-      if (awayName) {
-        const facts = getTeamFacts(awayName);
-        if (facts?.[0]) {
-          allFacts.push({
-            fact: facts[0],
-            emoji: "🔴",
-            tag: `${m.awayTeam?.shortName || awayName}`,
-            flag: m.awayTeam?.flag,
-          });
+        if (awayName) {
+          const facts = getTeamFacts(awayName);
+          if (facts?.[0]) {
+            allFacts.push({
+              fact: facts[0],
+              emoji: "🔴",
+              tag: `${m.awayTeam?.shortName || awayName}`,
+              flag: m.awayTeam?.flag,
+            });
+          }
         }
       }
     }
+    const general = WORLD_CUP_FACTS.slice(0, Math.max(0, 6 - allFacts.length));
+    combined = [...allFacts, ...general.map((f) => ({ fact: f, emoji: "⚽" }))];
   }
-
-  // Top up with general WC facts if fewer than 4 team facts.
-  const general = WORLD_CUP_FACTS.slice(0, Math.max(0, 6 - allFacts.length));
-  const combined = [...allFacts, ...general.map((f) => ({ fact: f, emoji: "⚽" }))];
 
   return (
     <div>
       <section className="mc-facts-hero">
-        <div className="mc-facts-hero-title">🏆 World Cup Trivia</div>
+        <div className="mc-facts-hero-title">
+          {isLive ? "📡 Live from the World Cup" : "🏆 World Cup Trivia"}
+        </div>
         <p className="mc-facts-hero-sub">
-          {allFacts.length > 0
-            ? "Learn the history behind today's teams and the tournament."
+          {isLive
+            ? "Real-time scores, results and goals from the tournament."
             : "Learn the history while you follow the tournament."}
         </p>
       </section>
@@ -601,7 +636,7 @@ const MatchCentre = () => {
 
         {tab === "live" && <LiveTab matches={matches} refreshedAt={refreshedAt} />}
         {tab === "groups" && <GroupsTab standings={standings} />}
-        {tab === "facts" && <FactsTab matches={matches} />}
+        {tab === "facts" && <FactsTab matches={matches} standings={standings} />}
       </div>
     </div>
   );

@@ -6,6 +6,7 @@ import { reportEngagement } from "../lib/engagement";
 import "./FreeKickGame.css";
 
 const RECHARGE_MS = 60 * 60 * 1000; // 1 hour
+const REMIND_BEFORE_MS = 5 * 60 * 1000; // heads-up this long before the refill
 const MAX_ENERGY = 3;
 const BALL_ORIGIN = { x: 50, y: 118 };
 const BALL_R = 3.0;
@@ -36,6 +37,16 @@ const POWER_CYCLE_MS = 300; // faster cursor = harder to hit the sweet spot
 const PWR_SWEET_LO = 0.38;
 const PWR_SWEET_HI = 0.72;
 
+// Streak challenge: score this many goals in a row (no misses in between) to
+// earn a one-off bonus that's added to your score and lifetime total.
+const STREAK_TARGET = 3;
+const STREAK_BONUS = 20;
+
+// Each goal is worth this much leaderboard XP (must match GOAL_XP on the
+// backend). Drives the goal banner so the XP shown always matches what's
+// actually awarded, including streak-bonus goals.
+const GOAL_XP = 10;
+
 const loadNum = (key) => {
   const v = parseInt(localStorage.getItem(key), 10);
   return Number.isNaN(v) ? null : v;
@@ -59,6 +70,31 @@ const loadSavedState = () => {
     total: loadNum("ffk_total") || 0,
     synced: loadNum("ffk_synced") || 0,
   };
+};
+
+// ---- Energy refill reminders (browser notifications) ----
+const canNotify = () =>
+  typeof window !== "undefined" && "Notification" in window;
+
+// Fires a system notification (works even when the tab is in the background).
+// Returns false when permission isn't granted so the caller can fall back to
+// an in-app toast.
+const sendRefillNotification = (title, body) => {
+  if (!canNotify() || Notification.permission !== "granted") return false;
+  try {
+    const n = new Notification(title, {
+      body,
+      icon: "/favicon.svg",
+      tag: "ffk-energy", // replaces older energy notifications instead of stacking
+    });
+    n.onclick = () => {
+      window.focus();
+      n.close();
+    };
+    return true;
+  } catch {
+    return false;
+  }
 };
 
 const GOAL_TOP = 4;
@@ -218,6 +254,14 @@ const FreeKickGame = () => {
   // Running total of goals across the whole tournament (persisted locally and
   // accumulated on the leaderboard), not a single best run.
   const [total, setTotal] = useState(saved.total);
+  // Consecutive goals (resets on any miss). Drives the "Score 3 perfect goals"
+  // streak-bonus challenge; the ref is the source of truth for the loop, the
+  // state mirror just keeps the challenge UI in sync.
+  const [streak, setStreak] = useState(0);
+  const streakRef = useRef(0);
+  // XP awarded for the most recent goal (base goal + any streak bonus), shown
+  // on the GOAL banner so the number is always truthful.
+  const [lastGoalXp, setLastGoalXp] = useState(GOAL_XP);
 
   const { getToken, isSignedIn, isLoaded } = useAuth();
   // How many goals have already been counted on the server for this browser,
@@ -228,6 +272,96 @@ const FreeKickGame = () => {
   // The pitch stays inert behind a "Play" overlay until the user opts in, so
   // stray touches while scrolling the page can never fire a shot.
   const [armed, setArmed] = useState(false);
+
+  // ---- Refill reminder (signed-in users) ----
+  // Two channels: an email to the user's account address (sent by the backend
+  // shortly before the refill, works even with the site closed) plus a browser
+  // notification / in-app toast when permission allows.
+  const [remindOn, setRemindOn] = useState(
+    () => localStorage.getItem("ffk_remind") === "1"
+  );
+  const [toast, setToast] = useState(null);
+  const toastTimerRef = useRef(null);
+  // Which reminders already fired for the current recharge cycle.
+  const remindedRef = useRef({ soon: false, ready: false });
+
+  const showToast = useCallback((msg) => {
+    setToast(msg);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToast(null), 6000);
+  }, []);
+
+  useEffect(() => () => clearTimeout(toastTimerRef.current), []);
+
+  // System notification reaches the user even when the tab is hidden; the
+  // in-app toast covers a visible tab (and the no-permission fallback).
+  const remind = useCallback(
+    (title, body) => {
+      const delivered = sendRefillNotification(title, body);
+      if (!delivered || !document.hidden) showToast(`${title} ${body}`);
+    },
+    [showToast]
+  );
+
+  const enableReminder = useCallback(async () => {
+    // Browser notifications are a bonus channel — ask, but don't require them.
+    // The email reminder works either way.
+    if (canNotify() && Notification.permission === "default") {
+      try {
+        await Notification.requestPermission();
+      } catch {
+        /* ignored — email still covers the reminder */
+      }
+    }
+    localStorage.setItem("ffk_remind", "1");
+    setRemindOn(true);
+    const hasNotif = canNotify() && Notification.permission === "granted";
+    showToast(
+      hasNotif
+        ? "🔔 Reminder set — we'll email you and ping you here when your energy refills."
+        : "📧 Reminder set — we'll email you before your energy refills."
+    );
+  }, [showToast]);
+
+  // Tracks which rechargeAt has been registered with the backend, so we only
+  // schedule the email once per recharge cycle.
+  const syncedReminderRef = useRef(null);
+
+  const disableReminder = useCallback(() => {
+    localStorage.removeItem("ffk_remind");
+    setRemindOn(false);
+    syncedReminderRef.current = null;
+    if (isSignedIn) {
+      (async () => {
+        try {
+          const token = await getToken();
+          await api.cancelEnergyReminder(token);
+        } catch {
+          // Backend unreachable — the stale reminder email is harmless.
+        }
+      })();
+    }
+  }, [isSignedIn, getToken]);
+
+  // Register the refill time with the backend so it can send the reminder
+  // email — this works even if the player closes the tab afterwards.
+  useEffect(() => {
+    if (!remindOn || !isSignedIn || !rechargeAt) return;
+    if (syncedReminderRef.current === rechargeAt) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await getToken();
+        await api.scheduleEnergyReminder(rechargeAt, token);
+        if (!cancelled) syncedReminderRef.current = rechargeAt;
+      } catch {
+        // Backend unreachable — the in-app/browser reminder still covers it.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [remindOn, isSignedIn, rechargeAt, getToken]);
 
   const [ball, setBall] = useState({ ...BALL_ORIGIN });
   const [spin, setSpin] = useState(0);
@@ -299,12 +433,38 @@ const FreeKickGame = () => {
     };
   }, [total, isSignedIn, getToken]);
 
+  // New recharge cycle → both reminders are armed again.
+  useEffect(() => {
+    remindedRef.current = { soon: false, ready: false };
+  }, [rechargeAt]);
+
+  // Heads-up shortly before the refill ("about to refill").
+  useEffect(() => {
+    if (!remindOn || !rechargeAt || remindedRef.current.soon) return;
+    const remaining = rechargeAt - now;
+    if (remaining > 0 && remaining <= REMIND_BEFORE_MS) {
+      remindedRef.current.soon = true;
+      const mins = Math.max(1, Math.round(remaining / 60000));
+      remind(
+        "⚽ Energy almost refilled!",
+        `Your free kicks are back in about ${mins} ${mins === 1 ? "minute" : "minutes"}.`
+      );
+    }
+  }, [now, rechargeAt, remindOn, remind]);
+
   useEffect(() => {
     if (energy <= 0 && rechargeAt && now >= rechargeAt) {
       setEnergy(MAX_ENERGY);
       setRechargeAt(null);
+      if (remindOn && !remindedRef.current.ready) {
+        remindedRef.current.ready = true;
+        remind(
+          "⚡ Energy refilled!",
+          `Your ${MAX_ENERGY} shots are ready — come take your free kicks!`
+        );
+      }
     }
-  }, [now, energy, rechargeAt]);
+  }, [now, energy, rechargeAt, remindOn, remind]);
 
   // ---- When recharged while locked, go back to aim ----
   useEffect(() => {
@@ -341,6 +501,9 @@ const FreeKickGame = () => {
 
   const endShot = useCallback(
     (outcome) => {
+      // Any non-goal breaks the perfect-goal streak.
+      streakRef.current = 0;
+      setStreak(0);
       phaseRef.current = "result";
       setPhase("result");
       setResult(outcome);
@@ -366,17 +529,32 @@ const FreeKickGame = () => {
     ballRef.current = { x: b.x, y: b.y };
     setBall({ x: b.x, y: b.y });
     setResult("GOAL");
-    setScore((s) => s + 1);
-    // Every goal adds to the lifetime tournament total.
+
+    // Extend the perfect-goal streak; every Nth goal in a row pays a bonus
+    // (added on top of the goal itself) to both the run score and the lifetime
+    // total, so it also lands on the leaderboard.
+    streakRef.current += 1;
+    setStreak(streakRef.current);
+    const earnedBonus = streakRef.current % STREAK_TARGET === 0;
+    const gain = 1 + (earnedBonus ? STREAK_BONUS : 0);
+    setLastGoalXp(gain * GOAL_XP);
+
+    setScore((s) => s + gain);
     setTotal((t) => {
-      const nt = t + 1;
+      const nt = t + gain;
       localStorage.setItem("ffk_total", String(nt));
       return nt;
     });
+    if (earnedBonus) {
+      showToast(
+        `🔥 ${STREAK_TARGET}-goal streak! +${STREAK_BONUS} bonus XP`
+      );
+    }
+
     phaseRef.current = "scoring";
     setPhase("scoring");
     reportEngagement("score_goal", getToken, isSignedIn);
-  }, [getToken, isSignedIn]);
+  }, [getToken, isSignedIn, showToast]);
 
   // ---- Main animation loop ----
   useEffect(() => {
@@ -506,6 +684,9 @@ const FreeKickGame = () => {
         setSpin(spinRef.current);
         if (bo.y > 122 || bo.x < 1 || bo.x > 99 || bo.t > 1.2) {
           bounceRef.current = null;
+          // Off the post and out is not a goal — the streak resets.
+          streakRef.current = 0;
+          setStreak(0);
           phaseRef.current = "result";
           setPhase("result");
           scheduleReset();
@@ -1036,17 +1217,22 @@ const FreeKickGame = () => {
               </div>
             )}
             <div className={`ffk-banner ffk-banner--${result.toLowerCase()}`}>
-              {result === "GOAL"
-                ? "GOOOOAL! ⚽"
-                : result === "SAVED"
-                  ? "SAVED! 🧤"
-                  : result === "POST"
-                    ? "OFF THE POST! 🪵"
-                    : result === "WIDE"
-                      ? "JUST WIDE! 😬"
-                      : result === "NOGOAL"
-                        ? "NO GOAL — NOT FULLY OVER! 🚫"
-                        : "MISS! 😖"}
+              {result === "GOAL" ? (
+                <>
+                  GOOOOAL! ⚽
+                  <span className="ffk-banner-xp">+{lastGoalXp} XP</span>
+                </>
+              ) : result === "SAVED" ? (
+                "SAVED! 🧤"
+              ) : result === "POST" ? (
+                "OFF THE POST! 🪵"
+              ) : result === "WIDE" ? (
+                "JUST WIDE! 😬"
+              ) : result === "NOGOAL" ? (
+                "NO GOAL — NOT FULLY OVER! 🚫"
+              ) : (
+                "MISS! 😖"
+              )}
             </div>
           </>
         )}
@@ -1059,6 +1245,32 @@ const FreeKickGame = () => {
               Recharging in {mm}:{ss}
             </div>
             <div className="ffk-lock-note">Come back for 3 more shots ⚡</div>
+            {isSignedIn &&
+              (remindOn ? (
+                <button
+                  type="button"
+                  className="ffk-remind-btn ffk-remind-btn--on"
+                  onClick={disableReminder}
+                  title="Tap to turn the reminder off"
+                >
+                  ✓ Reminder on — we'll email you before it refills
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="ffk-remind-btn"
+                  onClick={enableReminder}
+                >
+                  🔔 Email me when it's almost ready
+                </button>
+              ))}
+          </div>
+        )}
+
+        {/* Reminder / refill toast */}
+        {toast && (
+          <div className="ffk-toast" role="status">
+            {toast}
           </div>
         )}
 
@@ -1089,12 +1301,13 @@ const FreeKickGame = () => {
 
       <div className="ffk-challenges">
         <div className="ffk-challenge">
-          <span>🎯 Hit the top corner</span>
-          <span className="ffk-challenge-reward">Bonus XP</span>
-        </div>
-        <div className="ffk-challenge">
-          <span>⚽ Score 3 perfect goals</span>
-          <span className="ffk-challenge-reward">Streak bonus</span>
+          <span>
+            ⚽ Score {STREAK_TARGET} perfect goals{" "}
+            <span className="ffk-challenge-progress">
+              {streak % STREAK_TARGET}/{STREAK_TARGET}
+            </span>
+          </span>
+          <span className="ffk-challenge-reward">+{STREAK_BONUS} bonus XP</span>
         </div>
       </div>
 

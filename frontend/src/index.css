@@ -1,5 +1,25 @@
 @import "tailwindcss";
 
+/* Reusable "struck-out number" — a thick diagonal line through the content,
+   used to show the jersey prize dropped from 3 winners to 1. */
+.strike-one {
+  position: relative;
+  display: inline-block;
+  color: #9ca3af;
+}
+.strike-one::after {
+  content: "";
+  position: absolute;
+  left: -15%;
+  right: -15%;
+  top: 50%;
+  height: 3px;
+  border-radius: 2px;
+  background: #dc2626;
+  transform: translateY(-50%) rotate(-18deg);
+  transform-origin: center;
+}
+
 /* ---- Pitchside brand theme tokens (usable as Tailwind utilities) ---- */
 @theme {
   --font-sans: "DM Sans", system-ui, sans-serif;

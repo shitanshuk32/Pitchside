@@ -3,7 +3,6 @@ const cors = require("cors");
 const multer = require("multer");
 const {
   clerkMiddleware,
-  requireAuth,
   getAuth,
   clerkClient,
 } = require("@clerk/express");
@@ -23,8 +22,14 @@ const {
   getLiveAndToday,
   getGroupStandings,
   getKnockoutBracket,
+  backfillPredictedMatches,
   startSyncLoop,
 } = require("./services/match.service");
+const {
+  scheduleReminder,
+  cancelReminder,
+  startReminderLoop,
+} = require("./services/reminder.service");
 
 const app = express();
 
@@ -39,6 +44,15 @@ app.use(
 app.use(express.json());
 // Attaches auth context (req.auth) to every request when a session is present.
 app.use(clerkMiddleware());
+
+// Route guard for endpoints that require a signed-in user. Replaces Clerk's
+// deprecated requireAuth() — same behaviour (401 when there's no session),
+// built on clerkMiddleware() + getAuth() as recommended.
+const requireUser = (req, res, next) => {
+  const { userId } = getAuth(req) || {};
+  if (!userId) return res.status(401).json({ message: "Unauthorized" });
+  return next();
+};
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -104,6 +118,7 @@ const shapePost = (post, viewerId) => ({
   image: post.image,
   caption: post.caption,
   author: post.author?.clerkUserId ? post.author : null,
+  isOwner: !!viewerId && post.author?.clerkUserId === viewerId,
   createdAt: post.createdAt,
   ...summarizeReactions(post, viewerId),
   commentCount: (post.comments || []).length,
@@ -119,7 +134,7 @@ const shapePost = (post, viewerId) => ({
 // ---- Posts ----
 app.post(
   "/create_a_post",
-  requireAuth(),
+  requireUser,
   upload.single("image"),
   async (req, res) => {
     try {
@@ -151,7 +166,7 @@ app.post(
 );
 
 // Create a text-only "Chant" post — no file upload, just a short caption.
-app.post("/create_a_text_post", requireAuth(), async (req, res) => {
+app.post("/create_a_text_post", requireUser, async (req, res) => {
   try {
     const { userId } = getAuth(req);
     const caption = String(req.body?.text ?? req.body?.caption ?? "").trim();
@@ -191,8 +206,29 @@ app.get("/get_all_posts", async (req, res) => {
   });
 });
 
+// Delete a post / chant. Only the author may remove their own post.
+app.delete("/posts/:id", requireUser, async (req, res) => {
+  try {
+    const { userId } = getAuth(req);
+    const post = await postModel.findById(req.params.id);
+    if (!post) return res.status(404).json({ message: "Post not found" });
+
+    if (post.author?.clerkUserId !== userId) {
+      return res
+        .status(403)
+        .json({ message: "You can only delete your own post" });
+    }
+
+    await post.deleteOne();
+    return res.status(200).json({ message: "Post deleted" });
+  } catch (err) {
+    console.log("Error deleting post", err);
+    return res.status(500).json({ message: "Could not delete post" });
+  }
+});
+
 // Toggle a like for the signed-in user.
-app.post("/posts/:id/like", requireAuth(), async (req, res) => {
+app.post("/posts/:id/like", requireUser, async (req, res) => {
   try {
     const { userId } = getAuth(req);
     const post = await postModel.findById(req.params.id);
@@ -212,7 +248,7 @@ app.post("/posts/:id/like", requireAuth(), async (req, res) => {
 });
 
 // Set / change / clear the signed-in user's emoji reaction (one per user).
-app.post("/posts/:id/react", requireAuth(), async (req, res) => {
+app.post("/posts/:id/react", requireUser, async (req, res) => {
   try {
     const { userId } = getAuth(req);
     const emoji = String(req.body?.emoji || "");
@@ -247,7 +283,7 @@ app.post("/posts/:id/react", requireAuth(), async (req, res) => {
 });
 
 // Add a comment as the signed-in user.
-app.post("/posts/:id/comment", requireAuth(), async (req, res) => {
+app.post("/posts/:id/comment", requireUser, async (req, res) => {
   try {
     const { userId } = getAuth(req);
     const text = String(req.body?.text || "").trim();
@@ -294,7 +330,7 @@ app.get("/engagement/today", async (req, res) => {
   }
 });
 
-app.post("/engagement/activity", requireAuth(), async (req, res) => {
+app.post("/engagement/activity", requireUser, async (req, res) => {
   try {
     const { userId } = getAuth(req);
     const type = String(req.body?.type || "");
@@ -321,7 +357,7 @@ app.post("/engagement/activity", requireAuth(), async (req, res) => {
 // Add goals to the user's running tournament total. The body carries `goals`
 // (the number of new goals scored since the client last synced), which we
 // accumulate onto the existing total.
-app.post("/leaderboard/score", requireAuth(), async (req, res) => {
+app.post("/leaderboard/score", requireUser, async (req, res) => {
   try {
     const { userId } = getAuth(req);
     const raw = Number(req.body?.goals ?? req.body?.score);
@@ -341,7 +377,7 @@ app.post("/leaderboard/score", requireAuth(), async (req, res) => {
       scoreModel.findOneAndUpdate(
         { clerkUserId: userId },
         { $inc: { totalScore: delta }, $set: { username, imageUrl } },
-        { new: true, upsert: true }
+        { returnDocument: "after", upsert: true }
       );
 
     let entry;
@@ -590,9 +626,22 @@ app.get("/matches/bracket", async (req, res) => {
   }
 });
 
+// Manually trigger a backfill of final scores for predicted matches and grade
+// any open picks. Useful right after deploying so old predictions resolve
+// immediately instead of waiting for the next sync cycle.
+app.post("/matches/backfill", requireUser, async (req, res) => {
+  try {
+    const fetched = await backfillPredictedMatches();
+    return res.status(200).json({ message: "Backfill complete", fetched });
+  } catch (err) {
+    console.log("Error backfilling matches", err);
+    return res.status(500).json({ message: "Could not backfill matches" });
+  }
+});
+
 // ---- Predictions ----
 
-app.post("/predictions/:matchId", requireAuth(), async (req, res) => {
+app.post("/predictions/:matchId", requireUser, async (req, res) => {
   try {
     const { userId } = getAuth(req);
     const matchId = Number(req.params.matchId);
@@ -628,37 +677,71 @@ app.post("/predictions/:matchId", requireAuth(), async (req, res) => {
   }
 });
 
-app.get("/predictions/me", requireAuth(), async (req, res) => {
+// Remove a pick (lets the user undo a prediction before kick-off).
+app.delete("/predictions/:matchId", requireUser, async (req, res) => {
   try {
     const { userId } = getAuth(req);
-    const preds = await predictionModel
-      .find({ clerkUserId: userId })
-      .sort({ createdAt: -1 })
-      .lean();
+    const matchId = Number(req.params.matchId);
 
-    const matchIds = [...new Set(preds.map((p) => p.matchId))];
+    const match = await matchModel.findOne({ matchId }).lean();
+    if (match && !["SCHEDULED", "TIMED"].includes(match.status)) {
+      return res
+        .status(400)
+        .json({ message: "Predictions are locked for this match" });
+    }
+
+    await predictionModel.deleteOne({ clerkUserId: userId, matchId });
+    return res.status(200).json({ message: "Pick removed" });
+  } catch (err) {
+    console.log("Error removing prediction", err);
+    return res.status(500).json({ message: "Could not remove prediction" });
+  }
+});
+
+app.get("/predictions/me", requireUser, async (req, res) => {
+  try {
+    const { userId } = getAuth(req);
+    const preds = await predictionModel.find({ clerkUserId: userId }).lean();
+
+    const predMap = {};
+    for (const p of preds) predMap[p.matchId] = p;
+
+    // History shows every match that has already kicked off (so the user can
+    // see which ones they skipped), plus any match they predicted on — even if
+    // it hasn't started yet. Matches without a prediction are flagged
+    // participated:false so the UI can show a "didn't predict" state instead of
+    // a fake pick.
+    const now = new Date();
     const matchDocs = await matchModel
-      .find({ matchId: { $in: matchIds } })
+      .find({
+        $or: [
+          { utcDate: { $lte: now } },
+          { matchId: { $in: Object.keys(predMap).map(Number) } },
+        ],
+      })
+      .sort({ utcDate: -1 })
       .lean();
-    const matchMap = {};
-    for (const m of matchDocs) matchMap[m.matchId] = m;
 
     const total = preds.length;
     const graded = preds.filter((p) => p.correct !== null);
     const correct = graded.filter((p) => p.correct).length;
     const totalXp = preds.reduce((s, p) => s + (p.xpAwarded || 0), 0);
 
-    const history = preds.map((p) => {
-      const m = matchMap[p.matchId];
+    const history = matchDocs.map((m) => {
+      const p = predMap[m.matchId];
       return {
-        matchId: p.matchId,
-        homeTeam: m?.homeTeam?.shortName || "?",
-        awayTeam: m?.awayTeam?.shortName || "?",
-        utcDate: m?.utcDate,
-        pick: p.pick,
-        correct: p.correct,
-        xpAwarded: p.xpAwarded,
-        score: m?.score,
+        matchId: m.matchId,
+        homeTeam: m.homeTeam?.shortName || "?",
+        awayTeam: m.awayTeam?.shortName || "?",
+        homeName: m.homeTeam?.name || m.homeTeam?.shortName || null,
+        awayName: m.awayTeam?.name || m.awayTeam?.shortName || null,
+        status: m.status || null,
+        utcDate: m.utcDate,
+        participated: !!p,
+        pick: p?.pick ?? null,
+        correct: p?.correct ?? null,
+        xpAwarded: p?.xpAwarded ?? 0,
+        score: m.score,
       };
     });
 
@@ -671,7 +754,7 @@ app.get("/predictions/me", requireAuth(), async (req, res) => {
 
 // ---- Bracket ----
 
-app.post("/bracket", requireAuth(), async (req, res) => {
+app.post("/bracket", requireUser, async (req, res) => {
   try {
     const { userId } = getAuth(req);
     const picks = req.body?.picks;
@@ -705,7 +788,7 @@ app.post("/bracket", requireAuth(), async (req, res) => {
     const entry = await bracketModel.findOneAndUpdate(
       { clerkUserId: userId },
       { picks: merged },
-      { new: true, upsert: true }
+      { returnDocument: "after", upsert: true }
     );
 
     return res.status(200).json({ message: "Bracket saved", picks: entry.picks, score: entry.score });
@@ -715,7 +798,7 @@ app.post("/bracket", requireAuth(), async (req, res) => {
   }
 });
 
-app.get("/bracket/me", requireAuth(), async (req, res) => {
+app.get("/bracket/me", requireUser, async (req, res) => {
   try {
     const { userId } = getAuth(req);
     const b = await bracketModel.findOne({ clerkUserId: userId }).lean();
@@ -729,9 +812,52 @@ app.get("/bracket/me", requireAuth(), async (req, res) => {
   }
 });
 
+// ---- Energy refill reminders ----
+// The Free Kick game registers when the signed-in player's energy will refill;
+// a background sweep emails them (via their Clerk email) shortly before it's
+// ready. The energy itself still lives client-side — this only handles the
+// "your energy is about to refill" nudge.
+app.post("/energy/reminder", requireUser, async (req, res) => {
+  try {
+    const { userId } = getAuth(req);
+    const refillAt = Number(req.body?.refillAt);
+
+    // Sanity window: must be in the future, and energy never takes more than
+    // an hour to refill (small buffer for clock skew).
+    const maxAhead = 65 * 60 * 1000;
+    if (
+      !Number.isFinite(refillAt) ||
+      refillAt <= Date.now() ||
+      refillAt > Date.now() + maxAhead
+    ) {
+      return res.status(400).json({ message: "Invalid refill time" });
+    }
+
+    await scheduleReminder(userId, refillAt);
+    return res.status(200).json({ message: "Reminder scheduled" });
+  } catch (err) {
+    console.log("Error scheduling reminder", err);
+    return res.status(500).json({ message: "Could not schedule reminder" });
+  }
+});
+
+app.delete("/energy/reminder", requireUser, async (req, res) => {
+  try {
+    const { userId } = getAuth(req);
+    await cancelReminder(userId);
+    return res.status(200).json({ message: "Reminder cancelled" });
+  } catch (err) {
+    console.log("Error cancelling reminder", err);
+    return res.status(500).json({ message: "Could not cancel reminder" });
+  }
+});
+
 // Start the background match-sync loop when this module is loaded.
 if (process.env.FOOTBALL_DATA_API_KEY) {
   startSyncLoop();
 }
+
+// Email sweep for energy refill reminders (no-op unless SMTP is configured).
+startReminderLoop();
 
 module.exports = app;

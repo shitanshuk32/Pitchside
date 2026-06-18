@@ -7,6 +7,8 @@ import OnboardingTour from "../components/OnboardingTour";
 import AuthControls from "../components/AuthControls";
 import { WORLD_CUP_FACTS } from "./facts";
 import { api } from "../lib/api";
+import { flagFor } from "../lib/flags";
+import { buildLiveFacts } from "../lib/matchFacts";
 import "./Home.css";
 
 const BallDoodle = ({ className }) => (
@@ -133,6 +135,12 @@ const matchCountdown = (utcDate) => {
   return m > 0 ? `Starts in ${h}h ${m}m` : `Starts in ${h}h`;
 };
 
+const kickoffClock = (utcDate) =>
+  new Date(utcDate).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
 const Countdown = () => {
   const [diff, setDiff] = useState(() => KICKOFF.getTime() - Date.now());
 
@@ -189,7 +197,8 @@ const Countdown = () => {
 const LIVE_STATUSES = new Set(["IN_PLAY", "PAUSED", "HALF_TIME"]);
 
 const Flag = ({ flag, name }) => {
-  if (flag) return <span className="home-match-flag">{flag}</span>;
+  const emoji = flag || flagFor(name);
+  if (emoji) return <span className="home-match-flag">{emoji}</span>;
   return (
     <span className="home-match-flag-fallback">
       {(name || "?").slice(0, 2).toUpperCase()}
@@ -252,9 +261,16 @@ const TodayMatch = () => {
                   ) : (
                     <span className="home-today-vs">VS</span>
                   )}
-                  {!isLive && !isDone && (
-                    <span className="home-today-countdown">
-                      ⏰ {matchCountdown(m.utcDate)}
+                  {isDone ? (
+                    hasScore && <span className="home-today-ft">Full time</span>
+                  ) : isLive ? null : (
+                    <span className="home-today-time">
+                      <strong className="home-today-time-clock">
+                        {kickoffClock(m.utcDate)}
+                      </strong>
+                      <span className="home-today-time-count">
+                        ⏰ {matchCountdown(m.utcDate)}
+                      </span>
                     </span>
                   )}
                 </div>
@@ -283,8 +299,36 @@ const shuffle = (arr) => {
 };
 
 const Home = () => {
-  // Pick a fresh, random order of facts once per page load.
-  const [lines] = useState(() => shuffle(WORLD_CUP_FACTS).slice(0, 6));
+  // Start with a fresh, random order of the evergreen trivia so the carousel
+  // always has something, then replace/lead with real-time facts (live scores,
+  // results, goalscorers) once today's match data loads.
+  const [lines, setLines] = useState(() => shuffle(WORLD_CUP_FACTS).slice(0, 6));
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      api.getMatchesLive().catch(() => null),
+      api.getGroupStandings().catch(() => null),
+    ])
+      .then(([matchData, standingsData]) => {
+        if (cancelled) return;
+        const live = buildLiveFacts(
+          matchData?.matches || [],
+          standingsData?.standings || []
+        );
+        if (live.length > 0) {
+          // Lead with real, live facts; only top up with evergreen trivia if
+          // we don't have enough live ones to keep the ticker full.
+          setLines([...live, ...shuffle(WORLD_CUP_FACTS)].slice(0, 10));
+        }
+      })
+      .catch(() => {
+        // No live data (tournament not started / backend down) — keep trivia.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Replay the stickman goal celebration every 30s by remounting it.
   const [kickKey, setKickKey] = useState(0);
@@ -341,6 +385,7 @@ const Home = () => {
         <div className="home-facts-carousel">
           <div className="home-facts-card">
             <Typewriter
+              key={lines[0]}
               lines={lines}
               typingSpeed={70}
               deletingSpeed={45}
@@ -396,7 +441,8 @@ const Home = () => {
             <h2 className="home-game-title">Free Kick Challenge</h2>
             <p className="home-game-sub">
               3 shots. Bend it past the keeper, climb the global leaderboard —
-              top 3 win a free custom jersey 🎽
+              top <span className="strike-one">3</span> 1 wins a free custom
+              jersey 🎽
             </p>
           </div>
           <FreeKickGame />

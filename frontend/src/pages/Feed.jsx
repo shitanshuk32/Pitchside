@@ -41,7 +41,10 @@ const useInView = () => {
           obs.disconnect();
         }
       },
-      { threshold: 0.12, rootMargin: "0px 0px -40px 0px" }
+      // Positive bottom margin so a card reveals while it's still below the
+      // fold — otherwise its (opacity:0) space sits as blank cream until it
+      // scrolls well into view, leaving a gap at the bottom of the screen.
+      { threshold: 0, rootMargin: "0px 0px 35% 0px" }
     );
     obs.observe(el);
     return () => obs.disconnect();
@@ -103,6 +106,24 @@ const timeAgo = (iso) => {
   });
 };
 
+// Small brand-coloured verified tick shown next to usernames.
+const VerifiedBadge = () => (
+  <svg
+    viewBox="0 0 24 24"
+    className="h-3.5 w-3.5 shrink-0 text-brand-teal"
+    aria-label="Verified fan"
+  >
+    <path
+      fill="currentColor"
+      d="M12 1.8 14.6 4l3.3-.4 1 3.2 3 1.4-1.4 3 1.4 3-3 1.4-1 3.2-3.3-.4L12 22.2 9.4 20l-3.3.4-1-3.2-3-1.4 1.4-3-1.4-3 3-1.4 1-3.2 3.3.4z"
+    />
+    <path
+      fill="#fff"
+      d="m10.6 14.6-2-2-1.2 1.2 3.2 3.2 5.6-5.6-1.2-1.2z"
+    />
+  </svg>
+);
+
 const HeartIcon = ({ filled, className = "h-5 w-5" }) => (
   <svg
     viewBox="0 0 24 24"
@@ -129,6 +150,29 @@ const CommentIcon = ({ active }) => (
     aria-hidden="true"
   >
     <path d="M21 11.5a8.4 8.4 0 0 1-12.2 7.5L3 20.5l1.6-5.4A8.5 8.5 0 1 1 21 11.5z" />
+  </svg>
+);
+
+const DotsIcon = () => (
+  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden="true">
+    <circle cx="12" cy="5" r="1.8" />
+    <circle cx="12" cy="12" r="1.8" />
+    <circle cx="12" cy="19" r="1.8" />
+  </svg>
+);
+
+const TrashIcon = () => (
+  <svg
+    viewBox="0 0 24 24"
+    className="h-4 w-4 shrink-0"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m2 0-.7 12a2 2 0 0 1-2 1.9H8.7a2 2 0 0 1-2-1.9L6 7" />
   </svg>
 );
 
@@ -163,7 +207,7 @@ const ChantCard = ({ text, seed }) => (
       aria-hidden="true"
     />
     <span
-      className="pointer-events-none absolute -left-2 top-1 text-7xl text-white/20"
+      className="pointer-events-none absolute -left-1 top-0 text-7xl leading-none text-white/25"
       aria-hidden="true"
     >
       &ldquo;
@@ -177,15 +221,51 @@ const ChantCard = ({ text, seed }) => (
     >
       {text}
     </p>
-    <span className="absolute bottom-2 right-3 text-sm" aria-hidden="true">
-      📣
+    <span
+      className="pointer-events-none absolute -bottom-5 right-2 text-7xl leading-none text-white/25"
+      aria-hidden="true"
+    >
+      &rdquo;
     </span>
   </div>
 );
 
-const PostCard = ({ post, isSignedIn, getToken, index = 0 }) => {
+const PostCard = ({ post, isSignedIn, getToken, index = 0, onDeleted }) => {
   const [cardRef, inView] = useInView();
   const isText = post.type === "text";
+
+  // Owner-only options menu (delete).
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const onDocClick = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setMenuOpen(false);
+        setConfirming(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [menuOpen]);
+
+  const handleDelete = async () => {
+    if (deleting) return;
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      const token = await getToken();
+      await api.deletePost(post._id, token);
+      onDeleted?.(post._id);
+    } catch (err) {
+      setDeleting(false);
+      setDeleteError(err.message || "Could not delete");
+    }
+  };
   const [reactions, setReactions] = useState(post.reactions || []);
   const [myReaction, setMyReaction] = useState(post.myReaction || null);
   const [pending, setPending] = useState(false);
@@ -300,8 +380,11 @@ const PostCard = ({ post, isSignedIn, getToken, index = 0 }) => {
           <Avatar src={post.author?.imageUrl} name={post.author?.username} />
         </span>
         <div className="min-w-0">
-          <p className="truncate text-sm font-bold text-neutral-800">
-            {post.author?.username || "Pitchside fan"}
+          <p className="flex items-center gap-1 truncate text-sm font-bold text-neutral-800">
+            <span className="truncate">
+              {post.author?.username || "Pitchside fan"}
+            </span>
+            <VerifiedBadge />
           </p>
           <p className="flex items-center gap-1 text-[0.7rem] text-neutral-400">
             <span className="inline-block h-1 w-1 rounded-full bg-brand-teal/60" />
@@ -317,6 +400,74 @@ const PostCard = ({ post, isSignedIn, getToken, index = 0 }) => {
         >
           {isText ? "📣 Chant" : "📸 Photo"}
         </span>
+
+        {post.isOwner && (
+          <div className="relative shrink-0" ref={menuRef}>
+            <button
+              type="button"
+              onClick={() => {
+                setMenuOpen((o) => !o);
+                setConfirming(false);
+              }}
+              aria-label="Post options"
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              className="grid h-8 w-8 place-items-center rounded-full text-neutral-400 transition hover:bg-brand-purple/8 hover:text-brand-purple"
+            >
+              <DotsIcon />
+            </button>
+
+            {menuOpen && (
+              <div
+                role="menu"
+                className="comments-in absolute right-0 top-9 z-20 w-52 overflow-hidden rounded-2xl border border-black/5 bg-white p-1.5 shadow-xl shadow-brand-purple/15"
+              >
+                {!confirming ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => setConfirming(true)}
+                    className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-brand-red transition hover:bg-brand-red/8"
+                  >
+                    <TrashIcon /> Delete {isText ? "chant" : "post"}
+                  </button>
+                ) : (
+                  <div className="px-2 py-1.5">
+                    <p className="mb-2 text-xs leading-relaxed text-neutral-500">
+                      Delete this {isText ? "chant" : "post"}? This can&apos;t be
+                      undone.
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={handleDelete}
+                        disabled={deleting}
+                        className="flex-1 rounded-lg bg-brand-red px-3 py-1.5 text-xs font-bold text-white transition hover:brightness-110 disabled:opacity-60"
+                      >
+                        {deleting ? "Deleting…" : "Delete"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setConfirming(false);
+                          setMenuOpen(false);
+                        }}
+                        className="flex-1 rounded-lg bg-neutral-100 px-3 py-1.5 text-xs font-semibold text-neutral-600 transition hover:bg-neutral-200"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    {deleteError && (
+                      <p className="mt-1.5 text-xs text-brand-red">
+                        {deleteError}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </header>
 
       <div
@@ -561,19 +712,89 @@ const Feed = () => {
     };
   }, [isLoaded, fetchPosts]);
 
+  const handleDeleted = useCallback((id) => {
+    setState((s) =>
+      s.status === "ready"
+        ? { ...s, posts: (s.posts || []).filter((p) => p._id !== id) }
+        : s
+    );
+  }, []);
+
   const posts = state.posts ?? [];
 
+  // Real social-proof numbers derived from the loaded posts (reactions +
+  // comments = "cheers"), plus a few distinct author avatars to stack.
+  const totalCheers = posts.reduce((sum, p) => {
+    const r = (p.reactions || []).reduce((s, x) => s + (x.count || 0), 0);
+    return sum + r + (p.comments?.length || 0);
+  }, 0);
+  const fanAvatars = posts
+    .map((p) => p.author)
+    .filter(
+      (a, i, arr) =>
+        a && arr.findIndex((b) => b?.username === a?.username) === i
+    )
+    .slice(0, 4);
+  const extraFans = Math.max(0, posts.length - fanAvatars.length);
+
   return (
+    <>
     <PageShell
-      icon="⚽"
+      icon="🔥"
       badge="Live feed"
       title="The Feed"
       subtitle="See what your friends are cheering for."
       doodle="trophy"
     >
+      {/* Social proof + quick actions (brand palette to match the rest of the app) */}
+      {state.status === "ready" && posts.length > 0 && (
+        <div className="mb-4 flex items-center gap-3">
+          <div className="flex -space-x-2.5">
+            {fanAvatars.map((a, i) => (
+              <span
+                key={`${a.username}-${i}`}
+                className="rounded-full ring-2 ring-white"
+              >
+                <Avatar
+                  src={a.imageUrl}
+                  name={a.username}
+                  size="h-8 w-8 text-xs"
+                />
+              </span>
+            ))}
+            {extraFans > 0 && (
+              <span className="grid h-8 w-8 place-items-center rounded-full bg-brand-purple/10 text-[0.65rem] font-bold text-brand-purple ring-2 ring-white">
+                +{extraFans}
+              </span>
+            )}
+          </div>
+          <p className="text-sm text-neutral-500">
+            <strong className="font-extrabold text-brand-teal-ink">
+              {totalCheers.toLocaleString()}
+            </strong>{" "}
+            cheers today
+          </p>
+        </div>
+      )}
+
+      <div className="mb-6 grid grid-cols-2 gap-3">
+        <Link
+          to="/create_a_post"
+          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-linear-to-br from-brand-purple via-brand-red to-brand-gold px-4 py-3 text-sm font-bold text-white shadow-md shadow-brand-purple/25 transition hover:-translate-y-0.5 hover:shadow-lg hover:shadow-brand-purple/35"
+        >
+          📣 Create Chant
+        </Link>
+        <Link
+          to="/create_a_post"
+          className="inline-flex items-center justify-center gap-2 rounded-2xl border border-brand-purple/20 bg-white/85 px-4 py-3 text-sm font-bold text-brand-plum shadow-sm transition hover:-translate-y-0.5 hover:border-brand-purple/35 hover:bg-brand-purple/5 hover:shadow-md"
+        >
+          📸 Upload Photo
+        </Link>
+      </div>
+
       {state.status === "loading" && (
         <div
-          className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+          className="flex flex-col gap-5"
           aria-busy="true"
           aria-label="Loading posts"
         >
@@ -641,7 +862,7 @@ const Feed = () => {
             </button>
           </div>
 
-          <div className="grid items-start gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="flex flex-col gap-5">
             {posts.map((post, i) => (
               <PostCard
                 key={post._id}
@@ -649,12 +870,25 @@ const Feed = () => {
                 index={i}
                 isSignedIn={isSignedIn}
                 getToken={getToken}
+                onDeleted={handleDeleted}
               />
             ))}
           </div>
         </>
       )}
     </PageShell>
+
+    {/* Floating compose button (brand gradient) */}
+    <Link
+      to="/create_a_post"
+      aria-label="Create a post"
+      className="fixed bottom-24 right-5 z-30 grid h-14 w-14 place-items-center rounded-full bg-linear-to-br from-brand-purple via-brand-red to-brand-gold text-2xl font-bold text-white shadow-xl shadow-brand-purple/35 transition hover:-translate-y-1 hover:shadow-2xl hover:shadow-brand-purple/45 active:scale-95 sm:bottom-10 sm:right-10"
+    >
+      <span aria-hidden="true" className="-mt-0.5">
+        +
+      </span>
+    </Link>
+    </>
   );
 };
 

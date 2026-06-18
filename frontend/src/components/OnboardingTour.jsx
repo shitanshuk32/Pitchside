@@ -27,7 +27,7 @@ const STEPS = [
     target: "freekick",
     emoji: "🥅",
     title: "Free Kick Challenge",
-    body: "Drag to aim, curve your shot, and beat the keeper. The top 3 scorers win a free custom jersey.",
+    body: "Drag to aim, curve your shot, and beat the keeper. The top 3̶ 1 scorer wins a free custom jersey.",
   },
   {
     target: null,

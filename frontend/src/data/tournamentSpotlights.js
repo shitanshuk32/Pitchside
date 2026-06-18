@@ -33,7 +33,7 @@ export const TOURNAMENT_SPOTLIGHTS = [
   },
   {
     title: "Final week",
-    hook: "Jersey prizes go to the top 3 — make every shot and every post count.",
+    hook: "The jersey prize goes to the top 3̶ 1 — make every shot and every post count.",
     emoji: "🎽",
   },
 ];
