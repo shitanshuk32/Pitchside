@@ -46,6 +46,10 @@ export const api = {
   // correct any historical over-count down to it (never up).
   reconcileGoals: (total, token) =>
     request("/leaderboard/reconcile", { method: "POST", body: { total }, token }),
+  // Award bonus XP for newly-completed perfect-goal streaks. Sends the streak
+  // COUNT; the server owns the XP-per-streak value.
+  addStreakBonus: (streaks, token) =>
+    request("/leaderboard/bonus", { method: "POST", body: { streaks }, token }),
   getEngagementToday: (token) =>
     request("/engagement/today", token ? { token } : {}),
 

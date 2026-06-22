@@ -18,6 +18,8 @@ const {
   getEngagementToday,
   recordActivity,
   revokeChallengeXp,
+  awardStreakBonus,
+  STREAK_BONUS_XP,
 } = require("./services/engagement.service");
 const {
   logXpEvent,
@@ -505,6 +507,48 @@ app.post("/leaderboard/reconcile", requireUser, async (req, res) => {
   }
 });
 
+// Award bonus XP for completed perfect-goal streaks in the Free Kick game. The
+// body carries `streaks` (the number of 3-goal streaks completed since the
+// client last synced). The bonus is pure XP and lands on the engagement total
+// (NOT the goal count), so a streak never inflates how many goals a player has.
+// The server owns the XP-per-streak value (a client only reports the count),
+// and the count is clamped as a basic anti-cheat guard.
+app.post("/leaderboard/bonus", requireUser, async (req, res) => {
+  try {
+    const { userId } = getAuth(req);
+    const raw = Number(req.body?.streaks);
+
+    if (!Number.isFinite(raw) || raw <= 0) {
+      return res.status(400).json({ message: "Invalid streak count" });
+    }
+    const count = Math.min(Math.floor(raw), MAX_REASONABLE_SCORE);
+
+    const profile = await resolveProfile(userId);
+    const result = await awardStreakBonus(userId, count, () =>
+      Promise.resolve(profile)
+    );
+
+    if (result?.ok && result.xp) {
+      // Itemise the bonus in the XP ledger so it shows on the profile as its
+      // own line (distinct from the goals that earned it).
+      await logXpEvent({
+        clerkUserId: userId,
+        source: "streak_bonus",
+        amount: result.xp,
+        refId: `streakbonus:${userId}:${Date.now()}`,
+        detail: `${count} streak${count === 1 ? "" : "s"} × ${STREAK_BONUS_XP} XP`,
+      });
+    }
+
+    return res
+      .status(200)
+      .json({ message: "Bonus added", totalXp: result?.totalXp || 0 });
+  } catch (err) {
+    console.log("Error awarding streak bonus", err);
+    return res.status(500).json({ message: "Could not award bonus" });
+  }
+});
+
 // Build the unified ranking once — the single source of truth for both the
 // public leaderboard and an individual user's rank. Merges the two XP sources
 // (goals scored + prediction/challenge XP) into one combined total per player.
@@ -931,7 +975,10 @@ app.get("/me/xp", requireUser, async (req, res) => {
     // Group the ledger by area for the summary chips on the profile.
     const breakdown = { challengesXp: 0, predictionsXp: 0, goalsXp: 0 };
     for (const e of events) {
-      if (e.source === "goals") breakdown.goalsXp += e.amount;
+      // Goals and the free-kick streak bonus are both earned in the game, so
+      // they group together under "goals" XP.
+      if (e.source === "goals" || e.source === "streak_bonus")
+        breakdown.goalsXp += e.amount;
       else if (e.source === "predict_match_correct")
         breakdown.predictionsXp += e.amount;
       else breakdown.challengesXp += e.amount;

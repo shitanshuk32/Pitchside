@@ -15,6 +15,7 @@ const META = {
   predict_match: { label: "Match prediction", emoji: "🔮" },
   predict_match_correct: { label: "Correct prediction", emoji: "🎯" },
   goals: { label: "Free-kick goals", emoji: "⚽" },
+  streak_bonus: { label: "Free-kick streak bonus", emoji: "🔥" },
 };
 
 // Write (or idempotently update) one ledger row. Deduped by (clerkUserId,

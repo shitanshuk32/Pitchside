@@ -38,9 +38,12 @@ const PWR_SWEET_LO = 0.38;
 const PWR_SWEET_HI = 0.72;
 
 // Streak challenge: score this many goals in a row (no misses in between) to
-// earn a one-off bonus that's added to your score and lifetime total.
+// earn a one-off XP bonus. The bonus is PURE XP — it does NOT add extra goals,
+// so a goal is always counted as exactly one goal.
 const STREAK_TARGET = 3;
-const STREAK_BONUS = 20;
+// Bonus XP awarded for a completed streak. Must match STREAK_BONUS_XP on the
+// backend (engagement.service.js), which is the source of truth for the value.
+const STREAK_BONUS_XP = 20;
 
 // Each goal is worth this much leaderboard XP (must match GOAL_XP on the
 // backend). Drives the goal banner so the XP shown always matches what's
@@ -69,6 +72,9 @@ const loadSavedState = () => {
     rechargeAt,
     total: loadNum("ffk_total") || 0,
     synced: loadNum("ffk_synced") || 0,
+    // Completed streaks earned locally vs. already confirmed by the server.
+    bonusStreaks: loadNum("ffk_bonusStreaks") || 0,
+    bonusSynced: loadNum("ffk_bonusSynced") || 0,
   };
 };
 
@@ -271,6 +277,15 @@ const FreeKickGame = () => {
   // Latest running total, mirrored into a ref so the (serialized) sync can pick
   // up goals scored while a request is in flight without re-reading stale state.
   const totalRef = useRef(saved.total);
+  // Completed perfect-goal streaks pending sync to the server as bonus XP.
+  // Tracked as a COUNT (the server owns the XP-per-streak value) and
+  // delta-synced exactly like goals, so a retry / StrictMode double-invoke can
+  // never double-award. Crucially this is separate from `total` (goals), so a
+  // streak adds pure bonus XP without ever inflating the goal count.
+  const [bonusStreaks, setBonusStreaks] = useState(saved.bonusStreaks);
+  const bonusStreaksRef = useRef(saved.bonusStreaks);
+  const bonusSyncedRef = useRef(saved.bonusSynced);
+  const bonusSyncingRef = useRef(false);
   // Guards against overlapping submissions: only one /leaderboard/score request
   // may be in flight at a time, so a burst of goals can never be double-counted.
   const syncingRef = useRef(false);
@@ -475,6 +490,34 @@ const FreeKickGame = () => {
     })();
   }, [total, isSignedIn, getToken]);
 
+  // ---- Sync completed streaks to the server as bonus XP (signed-in only) ----
+  // Same delta-drain + single-in-flight mutex as the goal sync: submit only the
+  // streaks completed since the last *confirmed* sync, and advance the baseline
+  // only by what the server acknowledges, so a burst (or StrictMode's double
+  // mount) can never double-award the bonus.
+  useEffect(() => {
+    bonusStreaksRef.current = bonusStreaks;
+    if (!isSignedIn || bonusSyncingRef.current) return;
+    if (bonusStreaksRef.current <= bonusSyncedRef.current) return;
+
+    bonusSyncingRef.current = true;
+    (async () => {
+      try {
+        const token = await getToken();
+        while (bonusStreaksRef.current > bonusSyncedRef.current) {
+          const delta = bonusStreaksRef.current - bonusSyncedRef.current;
+          await api.addStreakBonus(delta, token);
+          bonusSyncedRef.current += delta;
+          localStorage.setItem("ffk_bonusSynced", String(bonusSyncedRef.current));
+        }
+      } catch {
+        // Network/backend down — retry on the next completed streak.
+      } finally {
+        bonusSyncingRef.current = false;
+      }
+    })();
+  }, [bonusStreaks, isSignedIn, getToken]);
+
   // New recharge cycle → both reminders are armed again.
   useEffect(() => {
     remindedRef.current = { soon: false, ready: false };
@@ -572,24 +615,29 @@ const FreeKickGame = () => {
     setBall({ x: b.x, y: b.y });
     setResult("GOAL");
 
-    // Extend the perfect-goal streak; every Nth goal in a row pays a bonus
-    // (added on top of the goal itself) to both the run score and the lifetime
-    // total, so it also lands on the leaderboard.
+    // Extend the perfect-goal streak. A goal always counts as exactly ONE goal
+    // (10 XP). Every Nth goal in a row additionally earns a one-off bonus that's
+    // pure XP — tracked + synced separately so it lifts the leaderboard total
+    // without ever inflating the goal count.
     streakRef.current += 1;
     setStreak(streakRef.current);
     const earnedBonus = streakRef.current % STREAK_TARGET === 0;
-    const gain = 1 + (earnedBonus ? STREAK_BONUS : 0);
-    setLastGoalXp(gain * GOAL_XP);
+    setLastGoalXp(GOAL_XP + (earnedBonus ? STREAK_BONUS_XP : 0));
 
-    setScore((s) => s + gain);
+    setScore((s) => s + 1);
     setTotal((t) => {
-      const nt = t + gain;
+      const nt = t + 1;
       localStorage.setItem("ffk_total", String(nt));
       return nt;
     });
     if (earnedBonus) {
+      setBonusStreaks((n) => {
+        const nn = n + 1;
+        localStorage.setItem("ffk_bonusStreaks", String(nn));
+        return nn;
+      });
       showToast(
-        `🔥 ${STREAK_TARGET}-goal streak! +${STREAK_BONUS} bonus XP`
+        `🔥 ${STREAK_TARGET}-goal streak! +${STREAK_BONUS_XP} bonus XP`
       );
     }
 
@@ -1356,7 +1404,7 @@ const FreeKickGame = () => {
               {streak % STREAK_TARGET}/{STREAK_TARGET}
             </span>
           </span>
-          <span className="ffk-challenge-reward">+{STREAK_BONUS} bonus XP</span>
+          <span className="ffk-challenge-reward">+{STREAK_BONUS_XP} bonus XP</span>
         </div>
       </div>
 

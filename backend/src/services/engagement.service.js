@@ -287,10 +287,49 @@ const revokeChallengeXp = async (userId, challengeId, xp, dateKey) => {
   }
 };
 
+// Bonus XP for a completed perfect 3-goal streak in the Free Kick game. The
+// server is the source of truth for this value (the client only reports HOW
+// MANY streaks were completed), so a tampered client can't choose its own
+// bonus. Must match STREAK_BONUS_XP on the client (FreeKickGame.jsx).
+const STREAK_BONUS_XP = 20;
+
+// Add bonus XP for `streaks` newly-completed streaks. Lives on engagement
+// (totalXp) like prediction/challenge XP — so it lifts the unified leaderboard
+// total WITHOUT touching the goal count.
+const awardStreakBonusOnce = async (userId, streaks, getProfile = null) => {
+  const count = Math.floor(Number(streaks));
+  if (!Number.isFinite(count) || count <= 0) {
+    return { ok: false, reason: "invalid_count" };
+  }
+
+  let eng = await engagementModel.findOne({ clerkUserId: userId });
+  if (!eng) eng = new engagementModel({ clerkUserId: userId });
+  await applyProfile(eng, getProfile);
+
+  const xp = count * STREAK_BONUS_XP;
+  eng.totalXp += xp;
+  await eng.save();
+
+  return { ok: true, count, xp, totalXp: eng.totalXp };
+};
+
+const awardStreakBonus = async (userId, streaks, getProfile = null) => {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await awardStreakBonusOnce(userId, streaks, getProfile);
+    } catch (err) {
+      if (isRetryableRaceError(err) && attempt < 3) continue;
+      throw err;
+    }
+  }
+};
+
 module.exports = {
   CHALLENGE_POOL,
+  STREAK_BONUS_XP,
   getEngagementToday,
   recordActivity,
   revokeChallengeXp,
+  awardStreakBonus,
   getTournamentInfo,
 };
