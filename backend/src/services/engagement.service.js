@@ -1,4 +1,5 @@
 const engagementModel = require("../models/engagement.model");
+const { logXpEvent } = require("./xpLedger.service");
 
 const TOURNAMENT_START = new Date("2026-06-11T00:00:00Z");
 const TOURNAMENT_DAYS = 39;
@@ -216,6 +217,14 @@ const recordActivityOnce = async (userId, challengeId, getProfile = null) => {
   eng.totalXp += challenge.xp;
   updateStreak(eng, today);
   await eng.save();
+
+  // Ledger row for the day's challenge (idempotent per user/day/challenge).
+  await logXpEvent({
+    clerkUserId: userId,
+    source: challengeId,
+    amount: challenge.xp,
+    refId: `daily:${today}:${challengeId}`,
+  });
 
   return {
     ok: true,

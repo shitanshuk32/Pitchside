@@ -3,6 +3,7 @@ import { Route, Routes } from "react-router-dom";
 import Home from "./pages/Home";
 import CreatePosts from "./pages/CreatePosts";
 import Feed from "./pages/Feed";
+import Profile from "./pages/Profile";
 import Leaderboard from "./pages/Leaderboard";
 import Predictions from "./pages/Predictions";
 import Bracket from "./pages/Bracket";
@@ -37,6 +38,14 @@ const App = () => {
           element={
             <ProtectedRoute>
               <Feed />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/profile"
+          element={
+            <ProtectedRoute>
+              <Profile />
             </ProtectedRoute>
           }
         />

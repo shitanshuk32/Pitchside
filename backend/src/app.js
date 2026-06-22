@@ -13,11 +13,17 @@ const engagementModel = require("./models/engagement.model");
 const predictionModel = require("./models/prediction.model");
 const bracketModel = require("./models/bracket.model");
 const matchModel = require("./models/match.model");
+const xpEventModel = require("./models/xpEvent.model");
 const {
   getEngagementToday,
   recordActivity,
   revokeChallengeXp,
 } = require("./services/engagement.service");
+const {
+  logXpEvent,
+  removeXpEvent,
+  backfillXpLedger,
+} = require("./services/xpLedger.service");
 
 // UTC day key (YYYY-MM-DD) used to stamp which day a post's XP was credited.
 const getDateKey = () => new Date().toISOString().slice(0, 10);
@@ -72,6 +78,9 @@ const MAX_REASONABLE_SCORE = 9999;
 // every way to earn points: free-kick goals, match predictions and daily
 // challenges. Each goal scored in the swipe game is worth this much XP.
 const GOAL_XP = 10;
+
+// XP needed per level (mirrors the client's hero card maths).
+const LEVEL_SIZE = 1000;
 
 // Resolve a friendly display name + avatar from the authenticated Clerk user.
 const resolveProfile = async (userId) => {
@@ -267,6 +276,9 @@ app.delete("/posts/:id", requireUser, async (req, res) => {
         // Non-fatal: the post is already gone; XP can self-correct on next earn.
         console.log("Error revoking post XP", revokeErr);
       }
+      // Drop the matching ledger row so the history stays in sync. Re-earning
+      // the challenge re-creates it.
+      await removeXpEvent(userId, `daily:${award.dateKey}:${award.challengeId}`);
     }
 
     return res.status(200).json({ message: "Post deleted", revokedXp });
@@ -440,6 +452,15 @@ app.post("/leaderboard/score", requireUser, async (req, res) => {
       }
     }
 
+    // Itemise this batch of goals in the XP ledger (one row per submission).
+    await logXpEvent({
+      clerkUserId: userId,
+      source: "goals",
+      amount: delta * GOAL_XP,
+      refId: `goals:${userId}:${Date.now()}`,
+      detail: `${delta} goal${delta === 1 ? "" : "s"} × ${GOAL_XP} XP`,
+    });
+
     return res.status(200).json({
       message: "Goals counted",
       totalScore: entry.totalScore,
@@ -450,56 +471,91 @@ app.post("/leaderboard/score", requireUser, async (req, res) => {
   }
 });
 
-// Public top list, ranked by unified XP. We merge the two XP sources — goals
-// scored (score collection) and prediction/challenge XP (engagement
-// collection) — into a single combined total per player. Optionally returns
-// the caller's own rank when signed in.
+// Reconcile the server total down to the client's true local goal count. The
+// client's localStorage counter is incremented exactly once per goal and is
+// never double-counted, so it's the source of truth for undoing any historical
+// over-count (e.g. from the old overlapping-submit bug). This can ONLY LOWER a
+// total — never raise it — so a tampered client can't use it to award goals.
+app.post("/leaderboard/reconcile", requireUser, async (req, res) => {
+  try {
+    const { userId } = getAuth(req);
+    const clientTotal = Math.floor(Number(req.body?.total));
+
+    if (!Number.isFinite(clientTotal) || clientTotal < 0) {
+      return res.status(400).json({ message: "Invalid total" });
+    }
+
+    const score = await scoreModel.findOne({ clerkUserId: userId });
+    if (!score) return res.status(200).json({ totalScore: 0 });
+
+    if (clientTotal < score.totalScore) {
+      score.totalScore = clientTotal;
+      await score.save();
+      // Let the XP ledger re-derive its goal rows from the corrected total on
+      // the next profile load (dropping the marker re-runs the idempotent,
+      // self-reconciling backfill; dropping the aggregate forces a fresh sum).
+      await xpEventModel.deleteOne({ clerkUserId: userId, refId: `marker:${userId}` });
+      await xpEventModel.deleteOne({ clerkUserId: userId, refId: `goals:init:${userId}` });
+    }
+
+    return res.status(200).json({ totalScore: score.totalScore });
+  } catch (err) {
+    console.log("Error reconciling score", err);
+    return res.status(500).json({ message: "Could not reconcile score" });
+  }
+});
+
+// Build the unified ranking once — the single source of truth for both the
+// public leaderboard and an individual user's rank. Merges the two XP sources
+// (goals scored + prediction/challenge XP) into one combined total per player.
+const buildUnifiedRanking = async () => {
+  const [scores, engagements] = await Promise.all([
+    scoreModel.find().select("clerkUserId username imageUrl totalScore").lean(),
+    engagementModel
+      .find()
+      .select("clerkUserId username imageUrl totalXp")
+      .lean(),
+  ]);
+
+  const byUser = new Map();
+  const ensure = (id) => {
+    let u = byUser.get(id);
+    if (!u) {
+      u = { clerkUserId: id, username: "", imageUrl: "", goals: 0, xp: 0 };
+      byUser.set(id, u);
+    }
+    return u;
+  };
+
+  // Goals contribute GOAL_XP each toward the unified total.
+  for (const s of scores) {
+    const u = ensure(s.clerkUserId);
+    u.goals = s.totalScore || 0;
+    u.xp += (s.totalScore || 0) * GOAL_XP;
+    if (s.username) u.username = s.username;
+    if (s.imageUrl) u.imageUrl = s.imageUrl;
+  }
+
+  // Prediction + daily-challenge XP is already accumulated on engagement.
+  for (const e of engagements) {
+    const u = ensure(e.clerkUserId);
+    u.xp += e.totalXp || 0;
+    if (!u.username && e.username) u.username = e.username;
+    if (!u.imageUrl && e.imageUrl) u.imageUrl = e.imageUrl;
+  }
+
+  return [...byUser.values()]
+    .filter((u) => u.xp > 0)
+    .sort((a, b) => b.xp - a.xp || b.goals - a.goals);
+};
+
+// Public top list, ranked by unified XP. Optionally returns the caller's own
+// rank when signed in.
 app.get("/leaderboard", async (req, res) => {
   try {
     const limit = Math.min(Number(req.query.limit) || 50, 100);
 
-    const [scores, engagements] = await Promise.all([
-      scoreModel
-        .find()
-        .select("clerkUserId username imageUrl totalScore")
-        .lean(),
-      engagementModel
-        .find()
-        .select("clerkUserId username imageUrl totalXp")
-        .lean(),
-    ]);
-
-    const byUser = new Map();
-    const ensure = (id) => {
-      let u = byUser.get(id);
-      if (!u) {
-        u = { clerkUserId: id, username: "", imageUrl: "", goals: 0, xp: 0 };
-        byUser.set(id, u);
-      }
-      return u;
-    };
-
-    // Goals contribute GOAL_XP each toward the unified total.
-    for (const s of scores) {
-      const u = ensure(s.clerkUserId);
-      u.goals = s.totalScore || 0;
-      u.xp += (s.totalScore || 0) * GOAL_XP;
-      if (s.username) u.username = s.username;
-      if (s.imageUrl) u.imageUrl = s.imageUrl;
-    }
-
-    // Prediction + daily-challenge XP is already accumulated on engagement.
-    for (const e of engagements) {
-      const u = ensure(e.clerkUserId);
-      u.xp += e.totalXp || 0;
-      if (!u.username && e.username) u.username = e.username;
-      if (!u.imageUrl && e.imageUrl) u.imageUrl = e.imageUrl;
-    }
-
-    const ranked = [...byUser.values()]
-      .filter((u) => u.xp > 0)
-      .sort((a, b) => b.xp - a.xp || b.goals - a.goals);
-
+    const ranked = await buildUnifiedRanking();
     const players = ranked.length;
 
     const shape = (u, rank) => ({
@@ -598,9 +654,15 @@ app.get("/matches/today", async (req, res) => {
     const pickMap = {};
     for (const p of userPicks) pickMap[p.matchId] = p;
 
+    const now = Date.now();
     const data = matches.map((m) => {
       const myPick = pickMap[m.matchId];
-      const canPick = ["SCHEDULED", "TIMED"].includes(m.status);
+      // Lock by BOTH a still-open status AND the kick-off time: the cached
+      // status can lag behind reality (it only refreshes on the API sync), so
+      // once kick-off has passed we close picks regardless of a stale status.
+      const kickoff = m.utcDate ? new Date(m.utcDate).getTime() : 0;
+      const canPick =
+        ["SCHEDULED", "TIMED"].includes(m.status) && kickoff > now;
       return {
         ...shapeMatchResponse(m),
         canPick,
@@ -690,6 +752,16 @@ app.post("/matches/backfill", requireUser, async (req, res) => {
 
 // ---- Predictions ----
 
+// A match is open for picks only while it's still scheduled AND kick-off
+// hasn't passed. The kick-off guard matters because the cached `status` can be
+// stale (it only updates when the football-data sync runs), so a match that
+// has already started could otherwise still look pickable.
+const isPickOpen = (match) => {
+  if (!match || !["SCHEDULED", "TIMED"].includes(match.status)) return false;
+  const kickoff = match.utcDate ? new Date(match.utcDate).getTime() : 0;
+  return kickoff > Date.now();
+};
+
 app.post("/predictions/:matchId", requireUser, async (req, res) => {
   try {
     const { userId } = getAuth(req);
@@ -703,7 +775,7 @@ app.post("/predictions/:matchId", requireUser, async (req, res) => {
     const match = await matchModel.findOne({ matchId }).lean();
     if (!match) return res.status(404).json({ message: "Match not found" });
 
-    if (!["SCHEDULED", "TIMED"].includes(match.status)) {
+    if (!isPickOpen(match)) {
       return res.status(400).json({ message: "Predictions are locked for this match" });
     }
 
@@ -733,7 +805,7 @@ app.delete("/predictions/:matchId", requireUser, async (req, res) => {
     const matchId = Number(req.params.matchId);
 
     const match = await matchModel.findOne({ matchId }).lean();
-    if (match && !["SCHEDULED", "TIMED"].includes(match.status)) {
+    if (match && !isPickOpen(match)) {
       return res
         .status(400)
         .json({ message: "Predictions are locked for this match" });
@@ -798,6 +870,93 @@ app.get("/predictions/me", requireUser, async (req, res) => {
   } catch (err) {
     console.log("Error loading predictions", err);
     return res.status(500).json({ message: "Could not load predictions" });
+  }
+});
+
+// ---- Profile (a user's own posts + XP history) ----
+
+// Every post the signed-in user has created, newest first.
+app.get("/me/posts", requireUser, async (req, res) => {
+  try {
+    const { userId } = getAuth(req);
+    const posts = await postModel
+      .find({ "author.clerkUserId": userId })
+      .sort({ createdAt: -1 })
+      .lean();
+    return res.status(200).json({ posts: posts.map((p) => shapePost(p, userId)) });
+  } catch (err) {
+    console.log("Error loading user posts", err);
+    return res.status(500).json({ message: "Could not load your posts" });
+  }
+});
+
+// A breakdown of where the user's XP came from, read straight from the per-event
+// xpEvent ledger (one timestamped row per award site). Existing users are
+// backfilled once, on first read, so their pre-ledger history shows up too.
+app.get("/me/xp", requireUser, async (req, res) => {
+  try {
+    const { userId } = getAuth(req);
+
+    // Reconstruct any pre-ledger history (idempotent; runs once per user).
+    await backfillXpLedger(userId);
+
+    const [eng, score, preds, postsCount, ranked, rows] = await Promise.all([
+      engagementModel.findOne({ clerkUserId: userId }).lean(),
+      scoreModel.findOne({ clerkUserId: userId }).lean(),
+      predictionModel.find({ clerkUserId: userId }).select("correct").lean(),
+      postModel.countDocuments({ "author.clerkUserId": userId }),
+      buildUnifiedRanking(),
+      xpEventModel
+        .find({ clerkUserId: userId, source: { $ne: "marker" }, amount: { $gt: 0 } })
+        .sort({ createdAt: -1 })
+        .lean(),
+    ]);
+
+    const engXp = eng?.totalXp || 0;
+    const goals = score?.totalScore || 0;
+    const total = engXp + goals * GOAL_XP;
+
+    const rankIdx = ranked.findIndex((u) => u.clerkUserId === userId);
+    const rank = rankIdx === -1 ? null : rankIdx + 1;
+
+    const events = rows.map((e) => ({
+      source: e.source,
+      label: e.label,
+      detail: e.detail,
+      emoji: e.emoji,
+      amount: e.amount,
+      date: e.createdAt,
+    }));
+
+    // Group the ledger by area for the summary chips on the profile.
+    const breakdown = { challengesXp: 0, predictionsXp: 0, goalsXp: 0 };
+    for (const e of events) {
+      if (e.source === "goals") breakdown.goalsXp += e.amount;
+      else if (e.source === "predict_match_correct")
+        breakdown.predictionsXp += e.amount;
+      else breakdown.challengesXp += e.amount;
+    }
+
+    return res.status(200).json({
+      total,
+      level: Math.floor(total / LEVEL_SIZE) + 1,
+      xpInLevel: total % LEVEL_SIZE,
+      levelSize: LEVEL_SIZE,
+      rank,
+      streak: eng?.streak || 0,
+      longestStreak: eng?.longestStreak || 0,
+      counts: {
+        posts: postsCount,
+        goals,
+        totalPredictions: preds.length,
+        correctPredictions: preds.filter((p) => p.correct === true).length,
+      },
+      breakdown,
+      events,
+    });
+  } catch (err) {
+    console.log("Error loading XP history", err);
+    return res.status(500).json({ message: "Could not load XP history" });
   }
 });
 

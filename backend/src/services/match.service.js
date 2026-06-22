@@ -1,6 +1,7 @@
 const matchModel = require("../models/match.model");
 const predictionModel = require("../models/prediction.model");
 const cacheModel = require("../models/cache.model");
+const { logXpEvent } = require("./xpLedger.service");
 
 const BASE_URL = "https://api.football-data.org/v4";
 const WC_CODE = "WC"; // football-data.org competition code for FIFA World Cup
@@ -15,14 +16,43 @@ let standingsCache = { data: null, fetchedAt: 0 };
 
 const getApiKey = () => process.env.FOOTBALL_DATA_API_KEY || "";
 
-const apiFetch = async (path) => {
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Transient network resets / timeouts surface as a generic "fetch failed" with
+// a cause code. These are worth a quick retry rather than skipping a whole sync
+// cycle (the next one is 30 minutes away).
+const isTransient = (err) => {
+  const code = err?.cause?.code || err?.code;
+  return ["ECONNRESET", "ETIMEDOUT", "ECONNREFUSED", "EAI_AGAIN", "UND_ERR_CONNECT_TIMEOUT"].includes(
+    code
+  );
+};
+
+const apiFetch = async (path, attempt = 1) => {
   const key = getApiKey();
   if (!key) throw new Error("FOOTBALL_DATA_API_KEY not set");
 
-  const res = await fetch(`${BASE_URL}${path}`, {
-    headers: { "X-Auth-Token": key },
-  });
+  const MAX_ATTEMPTS = 3;
+  let res;
+  try {
+    res = await fetch(`${BASE_URL}${path}`, {
+      headers: { "X-Auth-Token": key },
+    });
+  } catch (err) {
+    // Network-level failure (DNS/reset/timeout) — retry with a short backoff.
+    if (isTransient(err) && attempt < MAX_ATTEMPTS) {
+      await sleep(attempt * 1500);
+      return apiFetch(path, attempt + 1);
+    }
+    throw err;
+  }
 
+  // Rate limited: the free tier allows ~10 requests/minute. Back off and retry.
+  if (res.status === 429 && attempt < MAX_ATTEMPTS) {
+    const retryAfter = Number(res.headers.get("Retry-After")) || 6;
+    await sleep(retryAfter * 1000);
+    return apiFetch(path, attempt + 1);
+  }
   if (res.status === 429) {
     throw new Error("Football API rate limit hit");
   }
@@ -236,6 +266,16 @@ const gradePredictions = async () => {
         } catch {
           // Non-fatal.
         }
+        // Itemise the correct-pick bonus in the XP ledger (with the fixture).
+        await logXpEvent({
+          clerkUserId: pred.clerkUserId,
+          source: "predict_match_correct",
+          amount: PREDICTION_XP,
+          refId: `predcorrect:${pred.clerkUserId}:${match.matchId}`,
+          detail: `${match.homeTeam?.shortName || match.homeTeam?.name} v ${
+            match.awayTeam?.shortName || match.awayTeam?.name
+          }`,
+        });
       }
     }
 
@@ -246,27 +286,48 @@ const gradePredictions = async () => {
   }
 };
 
-// Backfill final scores for any match a user predicted on that we haven't been
-// able to grade yet. The rolling sync window only covers a few days around
-// today, so matches that kicked off earlier (and never got their result saved)
-// would stay "upcoming" forever. This fetches those fixtures directly by id
-// from the API, saves their final score/status, then grades the open picks.
-// It is self-limiting: once a match is FINISHED + graded it's skipped, so the
-// work shrinks to nothing as everything resolves.
+// Statuses a match can sit in after kick-off that still aren't "resolved" —
+// i.e. we should keep chasing the result for them.
+const NON_FINAL_STATUSES = ["SCHEDULED", "TIMED", "IN_PLAY", "PAUSED", "HALF_TIME"];
+
+// Backfill final scores for matches we haven't been able to grade yet. The
+// rolling sync window only covers a few days around today, so a match that
+// kicked off earlier (and never got its result saved) would stay "upcoming"
+// forever. This chases two groups directly by id from the API:
+//   1. any match a user predicted on that is still ungraded, and
+//   2. any cached match that kicked off but never reached a final status
+//      (so results self-heal even when nobody predicted them).
+// It saves their final score/status, then grades the open picks. It is
+// self-limiting: once a match is FINISHED + scored it's skipped, so the work
+// shrinks to nothing as everything resolves.
 const backfillPredictedMatches = async () => {
-  // Distinct matches that still have at least one ungraded prediction.
-  const pendingIds = await predictionModel.distinct("matchId", {
+  const now = Date.now();
+
+  // (1) Matches that still have at least one ungraded prediction.
+  const predictedIds = await predictionModel.distinct("matchId", {
     correct: null,
   });
-  if (!pendingIds.length) return 0;
+
+  // (2) Cached matches that have kicked off but are still in a non-final state.
+  const stalled = await matchModel
+    .find({
+      utcDate: { $lt: new Date(now) },
+      status: { $in: NON_FINAL_STATUSES },
+    })
+    .select("matchId")
+    .lean();
+
+  const candidateIds = [
+    ...new Set([...predictedIds, ...stalled.map((m) => m.matchId)]),
+  ];
+  if (!candidateIds.length) return 0;
 
   const stored = await matchModel
-    .find({ matchId: { $in: pendingIds } })
+    .find({ matchId: { $in: candidateIds } })
     .lean();
   const storedMap = new Map(stored.map((m) => [m.matchId, m]));
 
-  const now = Date.now();
-  const needFetch = pendingIds.filter((id) => {
+  const needFetch = candidateIds.filter((id) => {
     const m = storedMap.get(id);
     if (!m) return true; // we don't have this match cached at all — fetch it
     const hasScore = m.score?.home != null && m.score?.away != null;
@@ -353,7 +414,12 @@ const startSyncLoop = () => {
           (back ? `, backfilled ${back} predicted matches` : "")
       );
     } catch (err) {
-      console.warn("[match-sync] error:", err.message);
+      // `fetch failed` is a generic undici wrapper — the real reason (DNS,
+      // timeout, refused connection, TLS, etc.) lives on err.cause.
+      const cause = err.cause
+        ? ` (${err.cause.code || err.cause.message || err.cause})`
+        : "";
+      console.warn("[match-sync] error:", err.message + cause);
     }
   };
 

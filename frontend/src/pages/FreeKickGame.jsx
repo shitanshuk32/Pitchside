@@ -268,6 +268,15 @@ const FreeKickGame = () => {
   // so we only ever submit the new ones (the delta).
   const syncedRef = useRef(saved.synced);
   const [synced, setSynced] = useState(false);
+  // Latest running total, mirrored into a ref so the (serialized) sync can pick
+  // up goals scored while a request is in flight without re-reading stale state.
+  const totalRef = useRef(saved.total);
+  // Guards against overlapping submissions: only one /leaderboard/score request
+  // may be in flight at a time, so a burst of goals can never be double-counted.
+  const syncingRef = useRef(false);
+  // Ensures the one-time reconcile (self-heal of any historical over-count) runs
+  // at most once per mount.
+  const reconciledRef = useRef(false);
 
   // The pitch stays inert behind a "Play" overlay until the user opts in, so
   // stray touches while scrolling the page can never fire a shot.
@@ -408,29 +417,62 @@ const FreeKickGame = () => {
     return () => clearInterval(id);
   }, []);
 
-  // ---- Add new goals to the global leaderboard total (signed-in only) ----
-  // We submit only the delta (goals scored since the last successful sync), so
-  // the server keeps an accurate running total even across reloads.
+  // ---- One-time reconcile: heal any historical over-count (signed-in only) ----
+  // Sends this device's true local goal count so the server can correct an
+  // inflated total down to it. Runs before/independently of the delta-sync; the
+  // server only ever lowers, so this is safe and a no-op for accurate totals.
   useEffect(() => {
-    if (!isSignedIn || total <= syncedRef.current) return;
-    let cancelled = false;
+    if (!isSignedIn || !isLoaded || reconciledRef.current) return;
+    reconciledRef.current = true;
     (async () => {
       try {
-        const delta = total - syncedRef.current;
         const token = await getToken();
-        await api.addGoals(delta, token);
-        if (!cancelled) {
-          syncedRef.current = total;
-          localStorage.setItem("ffk_synced", String(total));
-          setSynced(true);
+        const res = await api.reconcileGoals(totalRef.current, token);
+        const server = Number(res?.totalScore);
+        if (Number.isFinite(server)) {
+          // The server total is now the truth; align our sync baseline so we
+          // neither re-push corrected goals nor lose genuinely new ones.
+          syncedRef.current = server;
+          localStorage.setItem("ffk_synced", String(server));
         }
       } catch {
-        // Network/backend down — will retry on the next goal.
+        // Offline/backend down — the normal delta-sync still keeps things sane.
       }
     })();
-    return () => {
-      cancelled = true;
-    };
+  }, [isSignedIn, isLoaded, getToken]);
+
+  // ---- Add new goals to the global leaderboard total (signed-in only) ----
+  // We submit only the delta (goals scored since the last *confirmed* sync), and
+  // serialize submissions so overlapping requests can't double-count. Earlier
+  // this used a `cancelled` flag, but that only suppressed the state update —
+  // the already-sent request still reached the server, so a fast burst of goals
+  // (or StrictMode's double-invoke on mount) inflated the total. Now a single
+  // request is in flight at a time and the baseline advances only by the amount
+  // the server actually confirmed.
+  useEffect(() => {
+    totalRef.current = total;
+    if (!isSignedIn || syncingRef.current) return;
+    if (totalRef.current <= syncedRef.current) return;
+
+    syncingRef.current = true;
+    (async () => {
+      try {
+        const token = await getToken();
+        // Drain everything scored so far, including goals that land mid-request,
+        // advancing the baseline only after each batch is acknowledged.
+        while (totalRef.current > syncedRef.current) {
+          const delta = totalRef.current - syncedRef.current;
+          await api.addGoals(delta, token);
+          syncedRef.current += delta;
+          localStorage.setItem("ffk_synced", String(syncedRef.current));
+        }
+        setSynced(true);
+      } catch {
+        // Network/backend down — leave the baseline put; retry on the next goal.
+      } finally {
+        syncingRef.current = false;
+      }
+    })();
   }, [total, isSignedIn, getToken]);
 
   // New recharge cycle → both reminders are armed again.
@@ -1077,7 +1119,17 @@ const FreeKickGame = () => {
           {/* Power meter (bottom-left) */}
           <g>
             <defs>
-              <linearGradient id="ffk-power" x1="0" y1="1" x2="0" y2="0">
+              {/* userSpaceOnUse pins the colour zones to the bar's fixed
+                  coordinates, so the gradient stays put (red top → green
+                  middle → yellow bottom) instead of stretching with the fill. */}
+              <linearGradient
+                id="ffk-power"
+                gradientUnits="userSpaceOnUse"
+                x1="0"
+                y1={POWER_TOP + POWER_H}
+                x2="0"
+                y2={POWER_TOP}
+              >
                 <stop offset="0%" stopColor="#f1c40f" />
                 <stop offset="38%" stopColor="#f1c40f" />
                 <stop offset="48%" stopColor="#2ecc71" />
@@ -1086,34 +1138,31 @@ const FreeKickGame = () => {
                 <stop offset="100%" stopColor="#e74c3c" />
               </linearGradient>
             </defs>
+            {/* The colour zones are STATIC — the whole bar is painted once so
+                the player reads a fixed scale. Only the arrow below moves. */}
             <rect
               x={POWER_X}
               y={POWER_TOP}
               width={POWER_W}
               height={POWER_H}
               rx="1.6"
-              fill="rgba(0,0,0,0.28)"
+              fill="url(#ffk-power)"
               stroke="rgba(255,255,255,0.5)"
               strokeWidth="0.35"
             />
-            {/* Sweet-spot band (green zone) */}
+            {/* Sweet-spot band outline (green zone) — a fixed marker on the bar */}
             <rect
-              x={POWER_X}
+              x={POWER_X - 0.3}
               y={POWER_TOP + (1 - PWR_SWEET_HI) * POWER_H}
-              width={POWER_W}
+              width={POWER_W + 0.6}
               height={(PWR_SWEET_HI - PWR_SWEET_LO) * POWER_H}
               rx="0.8"
-              fill="rgba(46, 204, 113, 0.22)"
+              fill="none"
+              stroke="#ffffff"
+              strokeWidth="0.4"
+              opacity="0.85"
             />
-            <rect
-              x={POWER_X}
-              y={POWER_TOP + (1 - power) * POWER_H}
-              width={POWER_W}
-              height={power * POWER_H}
-              rx="1.6"
-              fill="url(#ffk-power)"
-            />
-            {/* moving cursor marker — arrow on the inner (pitch-facing) side */}
+            {/* The ONLY moving part: an arrow that tracks the current power. */}
             <g transform={`translate(0, ${POWER_TOP + (1 - power) * POWER_H})`}>
               <path
                 d={`M${POWER_X + POWER_W + 2.6} 0 l-2 -1.6 0 3.2 z`}

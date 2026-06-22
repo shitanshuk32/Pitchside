@@ -42,8 +42,16 @@ export const api = {
   // contributes XP toward the unified leaderboard ranking).
   addGoals: (goals, token) =>
     request("/leaderboard/score", { method: "POST", body: { goals }, token }),
+  // One-time self-heal: push the device's true local total so the server can
+  // correct any historical over-count down to it (never up).
+  reconcileGoals: (total, token) =>
+    request("/leaderboard/reconcile", { method: "POST", body: { total }, token }),
   getEngagementToday: (token) =>
     request("/engagement/today", token ? { token } : {}),
+
+  // Profile: the signed-in user's own posts + a breakdown of their XP history.
+  getMyPosts: (token) => request("/me/posts", { token }),
+  getMyXp: (token) => request("/me/xp", { token }),
   recordEngagementActivity: (type, token) =>
     request("/engagement/activity", {
       method: "POST",

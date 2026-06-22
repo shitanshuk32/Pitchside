@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@clerk/react";
 import { api } from "../lib/api";
@@ -92,17 +92,36 @@ const MatchCard = ({ match, onPick }) => {
 
   // Optimistic local pick so the button highlights instantly on tap instead of
   // waiting for the network round-trip. Re-syncs whenever the server value
-  // changes (e.g. after a refresh).
+  // changes (e.g. after a refresh) — but never while a tap is still pending,
+  // so a background refresh can't clobber a choice we haven't saved yet.
   const [myPick, setMyPick] = useState(match.myPick ?? null);
+  const persistRef = useRef(null);
+  const pendingRef = useRef(false);
+
   useEffect(() => {
+    if (pendingRef.current) return;
     setMyPick(match.myPick ?? null);
   }, [match.myPick]);
 
+  useEffect(() => () => clearTimeout(persistRef.current), []);
+
   const handlePick = (id) => {
+    if (!canPick) return;
     // Tapping the active pick clears it (undo); otherwise switch to it.
     const next = myPick === id ? null : id;
     setMyPick(next);
-    onPick(match.matchId, next);
+    // Persist only the FINAL choice once rapid taps settle. Spam-clicking used
+    // to fire a burst of overlapping save/undo requests, and each response
+    // re-synced the card mid-animation — that's what made the buttons jump.
+    pendingRef.current = true;
+    clearTimeout(persistRef.current);
+    persistRef.current = setTimeout(async () => {
+      try {
+        await onPick(match.matchId, next);
+      } finally {
+        pendingRef.current = false;
+      }
+    }, 320);
   };
 
   const picks = [
@@ -220,6 +239,14 @@ const MatchCard = ({ match, onPick }) => {
               {outcomeLabel}
             </span>
           )}
+        </div>
+      )}
+
+      {!canPick && !myPick && (
+        <div className="pred-mypick">
+          <span className="pred-mypick-label pred-mypick-label--closed">
+            🔒 Predictions closed{isDone ? " · awaiting result" : ""}
+          </span>
         </div>
       )}
 

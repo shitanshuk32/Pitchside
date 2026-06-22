@@ -733,12 +733,7 @@ const Feed = () => {
 
   const posts = state.posts ?? [];
 
-  // Real social-proof numbers derived from the loaded posts (reactions +
-  // comments = "cheers"), plus a few distinct author avatars to stack.
-  const totalCheers = posts.reduce((sum, p) => {
-    const r = (p.reactions || []).reduce((s, x) => s + (x.count || 0), 0);
-    return sum + r + (p.comments?.length || 0);
-  }, 0);
+  // A few distinct author avatars to stack as light social proof.
   const fanAvatars = posts
     .map((p) => p.author)
     .filter(
@@ -779,12 +774,6 @@ const Feed = () => {
               </span>
             )}
           </div>
-          <p className="text-sm text-neutral-500">
-            <strong className="font-extrabold text-brand-teal-ink">
-              {totalCheers.toLocaleString()}
-            </strong>{" "}
-            cheers today
-          </p>
         </div>
       )}
 

@@ -1,10 +1,11 @@
 import { useAuth, UserButton } from "@clerk/react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 // Compact auth widget: a "Sign in" pill when logged out, the Clerk user menu
 // when logged in. Reused in the Home hero (large) and the inner page header.
 const AuthControls = ({ large = false }) => {
   const { isLoaded, isSignedIn } = useAuth();
+  const navigate = useNavigate();
 
   const avatarBox = large
     ? "h-12 w-12 ring-2 ring-brand-purple/40 ring-offset-2 shadow-lg shadow-brand-purple/25"
@@ -16,9 +17,17 @@ const AuthControls = ({ large = false }) => {
 
   if (isSignedIn) {
     return (
-      <UserButton
-        appearance={{ elements: { userButtonAvatarBox: avatarBox } }}
-      />
+      <UserButton appearance={{ elements: { userButtonAvatarBox: avatarBox } }}>
+        {/* Instagram-style entry point: a "My profile" item in the avatar menu
+            that opens the user's posts + XP history (client-side route). */}
+        <UserButton.MenuItems>
+          <UserButton.Action
+            label="My profile"
+            labelIcon={<span aria-hidden="true">🏟️</span>}
+            onClick={() => navigate("/profile")}
+          />
+        </UserButton.MenuItems>
+      </UserButton>
     );
   }
 
